@@ -75,6 +75,7 @@ services:
       dockerfile: Dockerfile
     container_name: qrs-booking-harats
     environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
       NEXT_PUBLIC_USER_API_URL: /api/user
       NEXT_PUBLIC_ADMIN_API_URL: /api/admin
     depends_on:
