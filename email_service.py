@@ -14,6 +14,13 @@ logger = logging.getLogger(__name__)
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
 
+logger.warning(
+    "Resend email service initialized: api_key_set=%s from_email_set=%s from_name=%s",
+    bool(RESEND_API_KEY),
+    bool(RESEND_FROM_EMAIL),
+    RESEND_FROM_NAME,
+)
+
 
 def _table_label(reservation):
     table_ids = reservation.get("table_ids") or ([] if reservation.get("tableId") is None else [reservation["tableId"]])
@@ -52,7 +59,7 @@ def _render_email_html(title, intro, reservation):
 def send_reservation_email(event_type, reservation):
     recipient = (reservation or {}).get("email")
     if not recipient or not RESEND_API_KEY or not RESEND_FROM_EMAIL:
-        logger.info(
+        logger.warning(
             "Skipping reservation email: event=%s reservation_id=%s recipient=%s enabled=%s",
             event_type,
             (reservation or {}).get("id"),
@@ -79,7 +86,7 @@ def send_reservation_email(event_type, reservation):
         "subject": subject,
         "html": _render_email_html(subject, intro, reservation),
     }
-    logger.info(
+    logger.warning(
         "Sending reservation email via Resend: event=%s reservation_id=%s request=%s",
         event_type,
         reservation.get("id"),
@@ -91,7 +98,7 @@ def send_reservation_email(event_type, reservation):
     )
     try:
         response = resend.Emails.send(params)
-        logger.info(
+        logger.warning(
             "Resend email response: event=%s reservation_id=%s response=%s",
             event_type,
             reservation.get("id"),
