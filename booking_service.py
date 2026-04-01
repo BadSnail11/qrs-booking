@@ -457,6 +457,7 @@ def reservation_payload(row):
         "sets": row.get("sets", 1),
         "email": row["email"],
         "phone": row["phone"],
+        "note": row.get("note"),
         "status": row["status"],
         "confirmation_code": row["confirmation_code"],
         "created_by_admin": row["created_by_admin"],

@@ -7,6 +7,7 @@ import { CalendarIcon, AlertTriangle, Users, X, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Calendar } from "@/components/ui/calendar"
 import {
   Dialog,
@@ -80,6 +81,7 @@ export function BookingModal({
     sets: "",
     time: "",
     tableOptionKey: "",
+    note: "",
   })
 
   const activeTables = useMemo(
@@ -258,6 +260,7 @@ export function BookingModal({
         date: dateValue,
         time: formData.time,
         table_ids: selectedOption?.tableIds,
+        note: formData.note || undefined,
         force,
       }) as Booking
 
@@ -271,6 +274,7 @@ export function BookingModal({
         sets: "",
         time: "",
         tableOptionKey: "",
+        note: "",
       })
       setDate(undefined)
       setShowWarning(false)
@@ -476,6 +480,17 @@ export function BookingModal({
                   )
                 })}
               </div>
+            </div>
+
+            {/* Note */}
+            <div className="space-y-2">
+              <Label>Примечание (необязательно)</Label>
+              <Textarea
+                value={formData.note}
+                onChange={(e) => handleInputChange("note", e.target.value)}
+                placeholder="Особые пожелания..."
+                className="resize-none"
+              />
             </div>
           </div>
 

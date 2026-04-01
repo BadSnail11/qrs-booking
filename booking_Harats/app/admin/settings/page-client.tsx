@@ -269,6 +269,9 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
               <p className="text-sm text-muted-foreground">Столы, график и Telegram уведомления</p>
             </div>
           </div>
+          <Button variant="outline" onClick={() => void loadData()}>
+            Обновить
+          </Button>
         </div>
       </div>
 

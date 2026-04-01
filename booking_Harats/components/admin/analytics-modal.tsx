@@ -119,6 +119,7 @@ export function AnalyticsModal({
       "Сеты": b.sets,
       "Стол": b.tableId,
       "Статус": b.status,
+      "Примечание": b.note || "",
     }))
 
     if (exportFormat === "json") {

@@ -302,6 +302,7 @@ def create_admin_reservation():
             email=body.get("email"),
             phone=body.get("phone"),
             sets=int(body.get("sets", 1)),
+            note=body.get("note"),
             table_ids=table_ids,
             created_by_admin=True,
             admin_note=body.get("admin_note"),

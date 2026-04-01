@@ -325,6 +325,11 @@ export default function AdminPage() {
                             </div>
                           </div>
                         </div>
+                        {booking.note && (
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {booking.note}
+                          </div>
+                        )}
                       </button>
                     )
                   })
