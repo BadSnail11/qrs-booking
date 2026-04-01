@@ -24,11 +24,7 @@ from booking_service import (
     validate_table_selection,
 )
 from db import execute, execute_returning, query_all
-from email_service import (
-    send_reservation_cancelled_email,
-    send_reservation_confirmed_email,
-    send_reservation_updated_email,
-)
+from email_service import send_reservation_email
 from telegram_service import (
     add_telegram_recipient,
     delete_reservation_notifications,
@@ -343,7 +339,7 @@ def edit_reservation(reservation_id):
 
     if not updated:
         return jsonify({"error": "Reservation not found"}), 404
-    send_reservation_updated_email(updated)
+    send_reservation_email("edited", updated)
     return jsonify(updated)
 
 
@@ -355,7 +351,7 @@ def confirm_pending_reservation(reservation_id):
     delete_reservation_notifications(reservation_id)
     reservation = get_reservation(reservation_id)
     if reservation:
-        send_reservation_confirmed_email(reservation)
+        send_reservation_email("confirmed", reservation)
     return jsonify({"message": "Reservation confirmed", "reservation": reservation})
 
 
@@ -405,7 +401,7 @@ def cancel(reservation_id):
         return jsonify({"error": "Reservation not found"}), 404
     reservation = get_reservation(reservation_id)
     if reservation:
-        send_reservation_cancelled_email(reservation)
+        send_reservation_email("cancelled", reservation)
     return jsonify({"message": "Reservation cancelled", "reservation": reservation})
 
 

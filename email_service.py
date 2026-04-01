@@ -1,104 +1,74 @@
 import os
-import smtplib
-from email.message import EmailMessage
+
+import resend
+
+from db import query_all
 
 
-SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USERNAME = os.getenv("SMTP_USERNAME", "").strip()
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
-SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "").strip() or SMTP_USERNAME
-SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "QRS Booking").strip()
-SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").strip().lower() == "true"
-SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "false").strip().lower() == "true"
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
+RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "").strip()
+RESEND_FROM_NAME = os.getenv("RESEND_FROM_NAME", "QRS Booking").strip()
+
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
 
 
-def _customer_name(reservation):
-    return (
-        reservation.get("customer_name")
-        or f"{reservation.get('firstName', '')} {reservation.get('lastName', '')}".strip()
-        or "гость"
+def _table_label(reservation):
+    table_ids = reservation.get("table_ids") or ([] if reservation.get("tableId") is None else [reservation["tableId"]])
+    if not table_ids:
+        return "Автоматический подбор"
+    rows = query_all(
+        "SELECT id, name FROM tables WHERE id = ANY(%s::int[]) ORDER BY id",
+        (list(table_ids),),
     )
+    names_by_id = {row["id"]: row["name"] for row in rows}
+    return " + ".join(names_by_id.get(table_id, f"#{table_id}") for table_id in table_ids)
 
 
-def _send_email(to_email, subject, body):
-    if not SMTP_HOST or not SMTP_FROM_EMAIL or not to_email:
-        return {"enabled": False, "sent": False}
-
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
-    message["To"] = to_email
-    message.set_content(body)
-
-    try:
-        if SMTP_USE_SSL:
-            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10) as server:
-                if SMTP_USERNAME:
-                    server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.send_message(message)
-        else:
-            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
-                if SMTP_USE_TLS:
-                    server.starttls()
-                if SMTP_USERNAME:
-                    server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.send_message(message)
-        return {"enabled": True, "sent": True}
-    except Exception:
-        return {"enabled": True, "sent": False}
-
-
-def send_reservation_confirmed_email(reservation):
-    email = reservation.get("email")
-    if not email:
-        return {"enabled": bool(SMTP_HOST), "sent": False}
-    name = _customer_name(reservation)
-    body = (
-        f"Здравствуйте, {name}!\n\n"
-        f"Ваше бронирование подтверждено.\n\n"
-        f"Номер бронирования: #{reservation['id']}\n"
-        f"Дата: {reservation['date']}\n"
-        f"Время: {reservation['time']} - {reservation['endTime']}\n"
-        f"Гостей: {reservation['guests']}\n"
-        f"Сетов: {reservation.get('sets', 1)}\n"
-        f"Телефон заведения: +375 44 762-55-46\n\n"
-        f"Спасибо!"
+def _render_email_html(title, intro, reservation):
+    guest_name = reservation.get("customer_name") or (
+        (reservation.get("firstName", "") + " " + reservation.get("lastName", "")).strip()
     )
-    return _send_email(email, "Ваше бронирование подтверждено", body)
+    return f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+      <h2 style="margin-bottom: 12px;">{title}</h2>
+      <p style="margin-bottom: 16px;">{intro}</p>
+      <div style="padding: 16px; border: 1px solid #e5e7eb; border-radius: 12px; background: #f9fafb;">
+        <p><strong>Номер:</strong> #{reservation["id"]}</p>
+        <p><strong>Гость:</strong> {guest_name or "-"}</p>
+        <p><strong>Дата:</strong> {reservation["date"]}</p>
+        <p><strong>Время:</strong> {reservation["time"]} - {reservation["endTime"]}</p>
+        <p><strong>Гостей:</strong> {reservation["guests"]}</p>
+        <p><strong>Сетов:</strong> {reservation.get("sets", 1)}</p>
+        <p><strong>Стол:</strong> {_table_label(reservation)}</p>
+        <p><strong>Комментарий:</strong> {reservation.get("note") or "-"}</p>
+      </div>
+    </div>
+    """
 
 
-def send_reservation_updated_email(reservation):
-    email = reservation.get("email")
-    if not email:
-        return {"enabled": bool(SMTP_HOST), "sent": False}
-    name = _customer_name(reservation)
-    body = (
-        f"Здравствуйте, {name}!\n\n"
-        f"Ваше бронирование было изменено.\n\n"
-        f"Номер бронирования: #{reservation['id']}\n"
-        f"Дата: {reservation['date']}\n"
-        f"Время: {reservation['time']} - {reservation['endTime']}\n"
-        f"Гостей: {reservation['guests']}\n"
-        f"Сетов: {reservation.get('sets', 1)}\n"
-        f"Комментарий: {reservation.get('note') or '-'}\n"
-        f"Статус: {reservation['status']}\n\n"
-        f"Если у вас есть вопросы, свяжитесь с заведением."
-    )
-    return _send_email(email, "Ваше бронирование изменено", body)
+def send_reservation_email(event_type, reservation):
+    recipient = (reservation or {}).get("email")
+    if not recipient or not RESEND_API_KEY or not RESEND_FROM_EMAIL:
+        return {"enabled": bool(RESEND_API_KEY and RESEND_FROM_EMAIL), "sent": False}
 
+    if event_type == "confirmed":
+        subject = "Ваше бронирование подтверждено"
+        intro = "Хорошая новость: ваше бронирование подтверждено."
+    elif event_type == "edited":
+        subject = "Ваше бронирование изменено"
+        intro = "Данные вашего бронирования были обновлены."
+    elif event_type == "cancelled":
+        subject = "Ваше бронирование отменено"
+        intro = "Ваше бронирование было отменено."
+    else:
+        raise ValueError("Unsupported reservation email event")
 
-def send_reservation_cancelled_email(reservation):
-    email = reservation.get("email")
-    if not email:
-        return {"enabled": bool(SMTP_HOST), "sent": False}
-    name = _customer_name(reservation)
-    body = (
-        f"Здравствуйте, {name}!\n\n"
-        f"Ваше бронирование отменено.\n\n"
-        f"Номер бронирования: #{reservation['id']}\n"
-        f"Дата: {reservation['date']}\n"
-        f"Время: {reservation['time']} - {reservation['endTime']}\n\n"
-        f"Если это произошло по ошибке, пожалуйста, свяжитесь с заведением."
-    )
-    return _send_email(email, "Ваше бронирование отменено", body)
+    params: resend.Emails.SendParams = {
+        "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+        "to": [recipient],
+        "subject": subject,
+        "html": _render_email_html(subject, intro, reservation),
+    }
+    resend.Emails.send(params)
+    return {"enabled": True, "sent": True}
