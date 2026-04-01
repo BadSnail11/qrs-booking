@@ -75,8 +75,8 @@ services:
       dockerfile: Dockerfile
     container_name: qrs-booking-harats
     environment:
-      NEXT_PUBLIC_USER_API_URL: http://localhost:8000
-      NEXT_PUBLIC_ADMIN_API_URL: http://localhost:8001
+      NEXT_PUBLIC_USER_API_URL: /api/user
+      NEXT_PUBLIC_ADMIN_API_URL: /api/admin
     depends_on:
       user-app:
         condition: service_started

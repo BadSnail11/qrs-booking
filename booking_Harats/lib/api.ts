@@ -1,7 +1,7 @@
 "use client"
 
-const USER_API_URL = process.env.NEXT_PUBLIC_USER_API_URL || "http://localhost:8000"
-const ADMIN_API_URL = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:8001"
+const USER_API_URL = process.env.NEXT_PUBLIC_USER_API_URL || "/api/user"
+const ADMIN_API_URL = process.env.NEXT_PUBLIC_ADMIN_API_URL || "/api/admin"
 
 async function request<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
