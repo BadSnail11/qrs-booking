@@ -15,6 +15,7 @@ OPEN_HOUR = int(os.getenv("OPEN_HOUR", "11"))
 CLOSE_HOUR = int(os.getenv("CLOSE_HOUR", "22"))
 MAX_COMBINED_TABLES = int(os.getenv("MAX_COMBINED_TABLES", "3"))
 MAX_EXTRA_SEATS = int(os.getenv("MAX_EXTRA_SEATS", "2"))
+logger = logging.getLogger(__name__)
 WEEKDAY_NAMES = [
     "monday",
     "tuesday",
@@ -497,9 +498,17 @@ def get_slots_for_day(date_value, guests):
     slots = []
     hour = open_time_value.hour
     minute = open_time_value.minute
-    logging.info(f"Open time: {open_time_value}, Close time: {close_time_value}")
-    logging.info(f"Hour: {hour}, Minute: {minute}")
     while True:
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            logger.error(
+                "Invalid slot time generated in get_slots_for_day: date=%s hour=%s minute=%s open=%s close=%s step=%s",
+                date_value,
+                hour,
+                minute,
+                schedule["openTime"],
+                schedule["closeTime"],
+                AVAILABILITY_STEP_MINUTES,
+            )
         slot_time = datetime.combine(date_obj, time(hour, minute))
         if slot_time.time() > close_time_value:
             break
