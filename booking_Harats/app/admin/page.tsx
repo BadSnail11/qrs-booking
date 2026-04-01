@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { AdminHeader } from "@/components/admin/admin-header"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { TablesGrid } from "@/components/admin/tables-grid"
@@ -8,9 +9,6 @@ import { BookingModal } from "@/components/admin/booking-modal"
 import { EditBookingModal } from "@/components/admin/edit-booking-modal"
 import { BlockTableModal } from "@/components/admin/block-table-modal"
 import { AnalyticsModal } from "@/components/admin/analytics-modal"
-import { ManageTablesModal } from "@/components/admin/manage-tables-modal"
-import { ManageScheduleModal } from "@/components/admin/manage-schedule-modal"
-import { ManageTelegramModal } from "@/components/admin/manage-telegram-modal"
 import { Button } from "@/components/ui/button"
 import { Plus, List, Grid3X3 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -57,6 +55,7 @@ export type ScheduleDay = {
 }
 
 export default function AdminPage() {
+  const router = useRouter()
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [searchQuery, setSearchQuery] = useState("")
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -72,9 +71,6 @@ export default function AdminPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false)
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false)
-  const [isManageTablesModalOpen, setIsManageTablesModalOpen] = useState(false)
-  const [isManageScheduleModalOpen, setIsManageScheduleModalOpen] = useState(false)
-  const [isManageTelegramModalOpen, setIsManageTelegramModalOpen] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
 
@@ -204,9 +200,9 @@ export default function AdminPage() {
         selectedDate={selectedDate}
         onDateChange={setSelectedDate}
         onAnalyticsClick={() => setIsAnalyticsModalOpen(true)}
-        onManageTablesClick={() => setIsManageTablesModalOpen(true)}
-        onManageScheduleClick={() => setIsManageScheduleModalOpen(true)}
-        onManageTelegramClick={() => setIsManageTelegramModalOpen(true)}
+        onManageTablesClick={() => router.push("/admin/settings?tab=tables")}
+        onManageScheduleClick={() => router.push("/admin/settings?tab=schedule")}
+        onManageTelegramClick={() => router.push("/admin/settings?tab=telegram")}
         onRefreshClick={() => void loadData()}
         pendingCount={pendingBookings.length}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
@@ -394,25 +390,6 @@ export default function AdminPage() {
         isOpen={isAnalyticsModalOpen}
         onClose={() => setIsAnalyticsModalOpen(false)}
         bookings={bookings}
-      />
-
-      <ManageTablesModal
-        isOpen={isManageTablesModalOpen}
-        onClose={() => setIsManageTablesModalOpen(false)}
-        tables={tables}
-        onSaved={() => void loadData()}
-      />
-
-      <ManageScheduleModal
-        isOpen={isManageScheduleModalOpen}
-        onClose={() => setIsManageScheduleModalOpen(false)}
-        schedule={schedule}
-        onSaved={() => void loadData()}
-      />
-
-      <ManageTelegramModal
-        isOpen={isManageTelegramModalOpen}
-        onClose={() => setIsManageTelegramModalOpen(false)}
       />
     </div>
   )
