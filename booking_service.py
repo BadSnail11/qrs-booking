@@ -496,6 +496,7 @@ def get_slots_for_day(date_value, guests):
     slots = []
     hour = open_time_value.hour
     minute = open_time_value.minute
+    print(hour, minute)
     while True:
         slot_time = datetime.combine(date_obj, time(hour, minute))
         if slot_time.time() > close_time_value:
