@@ -1,0 +1,5 @@
+Automatic confirmation principle: if a table is available, the difference between its capacity and the number of people does not exceed 2 (modulo 2).
+In other cases, if the difference (modulo 2) is greater than 2, the reservation is accepted and sent for manual confirmation.
+If the number of people exceeds the maximum capacity of all tables, the maximum capacity must be checked when combining tables. If it is possible to accommodate people by combining tables, a possible time is offered, and the reservation is accepted and sent for confirmation.
+All checks must be performed when the user is offered a possible reservation time.
+When selecting a table, the system must take into account maximum seating capacity, so the smallest possible table should be offered first.
