@@ -4,6 +4,7 @@ import itertools
 import os
 import random
 import string
+import logging
 from datetime import datetime, time, timedelta
 
 from db import execute, execute_returning, query_all, query_one
@@ -496,7 +497,8 @@ def get_slots_for_day(date_value, guests):
     slots = []
     hour = open_time_value.hour
     minute = open_time_value.minute
-    print(hour, minute)
+    logging.info(f"Open time: {open_time_value}, Close time: {close_time_value}")
+    logging.info(f"Hour: {hour}, Minute: {minute}")
     while True:
         slot_time = datetime.combine(date_obj, time(hour, minute))
         if slot_time.time() > close_time_value:
