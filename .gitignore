@@ -15,6 +15,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+!booking_Harats/lib/
+!booking_Harats/lib/*.ts
+!booking_Harats/lib/*.tsx
 lib64/
 parts/
 sdist/

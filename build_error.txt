@@ -1,0 +1,799 @@
+0.793 
+0.793 > my-project@0.1.0 build /app
+0.793 > next build
+0.793 
+1.444 ▲ Next.js 16.2.0 (Turbopack)
+1.446 
+1.478   Creating an optimized production build ...
+10.39 
+10.39 > Build error occurred
+10.40 Error: Turbopack build failed with 27 errors:
+10.40 ./app/admin/page.tsx:18:1
+10.40 Module not found: Can't resolve '@/lib/api'
+10.40   16 | import { cn } from "@/lib/utils"
+10.40   17 | import { format } from "date-fns"
+10.40 > 18 | import { adminApi } from "@/lib/api"
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   19 |
+10.40   20 | export type Booking = {
+10.40   21 |   id: string
+10.40 
+10.40 Import map: aliased to relative './lib/api' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/admin/analytics-modal.tsx:29:1
+10.40 Module not found: Can't resolve '@/lib/api'
+10.40   27 | import { cn } from "@/lib/utils"
+10.40   28 | import type { Booking } from "@/app/admin/page"
+10.40 > 29 | import { adminApi } from "@/lib/api"
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   30 |
+10.40   31 | interface AnalyticsModalProps {
+10.40   32 |   isOpen: boolean
+10.40 
+10.40 Import map: aliased to relative './lib/api' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/admin/analytics-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/admin/analytics-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/admin/block-table-modal.tsx:31:1
+10.40 Module not found: Can't resolve '@/lib/api'
+10.40   29 | import { cn } from "@/lib/utils"
+10.40   30 | import type { Table } from "@/app/admin/page"
+10.40 > 31 | import { adminApi } from "@/lib/api"
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   32 |
+10.40   33 | interface BlockTableModalProps {
+10.40   34 |   isOpen: boolean
+10.40 
+10.40 Import map: aliased to relative './lib/api' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/admin/block-table-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/admin/block-table-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/admin/booking-modal.tsx:42:1
+10.40 Module not found: Can't resolve '@/lib/api'
+10.40   40 | import { cn } from "@/lib/utils"
+10.40   41 | import type { Booking, ScheduleDay, Table } from "@/app/admin/page"
+10.40 > 42 | import { adminApi } from "@/lib/api"
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   43 |
+10.40   44 | interface BookingModalProps {
+10.40   45 |   isOpen: boolean
+10.40 
+10.40 Import map: aliased to relative './lib/api' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/admin/booking-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/admin/booking-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/admin/edit-booking-modal.tsx:42:1
+10.40 Module not found: Can't resolve '@/lib/api'
+10.40   40 | import { cn } from "@/lib/utils"
+10.40   41 | import type { Booking } from "@/app/admin/page"
+10.40 > 42 | import { adminApi } from "@/lib/api"
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   43 | import { ReservationStatusBadge } from "@/components/admin/reservation-status-badge"
+10.40   44 |
+10.40   45 | interface EditBookingModalProps {
+10.40 
+10.40 Import map: aliased to relative './lib/api' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/admin/edit-booking-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/admin/edit-booking-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/admin/manage-schedule-modal.tsx:5:1
+10.40 Module not found: Can't resolve '@/lib/api'
+10.40   3 | import { useEffect, useState } from "react"
+10.40   4 | import type { ScheduleDay } from "@/app/admin/page"
+10.40 > 5 | import { adminApi } from "@/lib/api"
+10.40     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   6 | import { Button } from "@/components/ui/button"
+10.40   7 | import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/component...
+10.40   8 | import { Input } from "@/components/ui/input"
+10.40 
+10.40 Import map: aliased to relative './lib/api' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/admin/manage-schedule-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/admin/manage-schedule-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/admin/manage-tables-modal.tsx:5:1
+10.40 Module not found: Can't resolve '@/lib/api'
+10.40   3 | import { useEffect, useState } from "react"
+10.40   4 | import type { Table } from "@/app/admin/page"
+10.40 > 5 | import { adminApi } from "@/lib/api"
+10.40     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   6 | import { Button } from "@/components/ui/button"
+10.40   7 | import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/component...
+10.40   8 | import { Input } from "@/components/ui/input"
+10.40 
+10.40 Import map: aliased to relative './lib/api' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/admin/manage-tables-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/admin/manage-tables-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/admin/manage-telegram-modal.tsx:4:1
+10.40 Module not found: Can't resolve '@/lib/api'
+10.40   2 |
+10.40   3 | import { useEffect, useState } from "react"
+10.40 > 4 | import { adminApi } from "@/lib/api"
+10.40     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   5 | import { Button } from "@/components/ui/button"
+10.40   6 | import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/component...
+10.40   7 | import { Input } from "@/components/ui/input"
+10.40 
+10.40 Import map: aliased to relative './lib/api' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/admin/manage-telegram-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/admin/manage-telegram-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/booking-form.tsx:25:1
+10.40 Module not found: Can't resolve '@/lib/api'
+10.40   23 | import { ru } from "date-fns/locale"
+10.40   24 | import { CalendarIcon, Check, Users, User, Phone, MessageSquare, UtensilsCrossed, Timer, M...
+10.40 > 25 | import { userApi } from "@/lib/api"
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   26 |
+10.40   27 | const guestOptions = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+10.40   28 | const setOptions = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+10.40 
+10.40 Import map: aliased to relative './lib/api' inside of [project]/
+10.40 
+10.40 
+10.40 Import trace:
+10.40   Server Component:
+10.40     ./components/booking-form.tsx
+10.40     ./app/page.tsx
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./app/admin/page.tsx:16:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   14 | import { Button } from "@/components/ui/button"
+10.40   15 | import { Plus, List, Grid3X3 } from "lucide-react"
+10.40 > 16 | import { cn } from "@/lib/utils"
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   17 | import { format } from "date-fns"
+10.40   18 | import { adminApi } from "@/lib/api"
+10.40   19 |
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/admin/admin-header.tsx:14:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   12 |   PopoverTrigger,
+10.40   13 | } from "@/components/ui/popover"
+10.40 > 14 | import { cn } from "@/lib/utils"
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   15 |
+10.40   16 | interface AdminHeaderProps {
+10.40   17 |   searchQuery: string
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/admin/admin-header.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/admin/admin-header.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/admin/analytics-modal.tsx:27:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   25 |   PopoverTrigger,
+10.40   26 | } from "@/components/ui/popover"
+10.40 > 27 | import { cn } from "@/lib/utils"
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   28 | import type { Booking } from "@/app/admin/page"
+10.40   29 | import { adminApi } from "@/lib/api"
+10.40   30 |
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/admin/analytics-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/admin/analytics-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/admin/block-table-modal.tsx:29:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   27 |   PopoverTrigger,
+10.40   28 | } from "@/components/ui/popover"
+10.40 > 29 | import { cn } from "@/lib/utils"
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   30 | import type { Table } from "@/app/admin/page"
+10.40   31 | import { adminApi } from "@/lib/api"
+10.40   32 |
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/admin/block-table-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/admin/block-table-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/admin/booking-modal.tsx:40:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   38 |   AlertDialogTitle,
+10.40   39 | } from "@/components/ui/alert-dialog"
+10.40 > 40 | import { cn } from "@/lib/utils"
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   41 | import type { Booking, ScheduleDay, Table } from "@/app/admin/page"
+10.40   42 | import { adminApi } from "@/lib/api"
+10.40   43 |
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/admin/booking-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/admin/booking-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/admin/edit-booking-modal.tsx:40:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   38 |   AlertDialogTitle,
+10.40   39 | } from "@/components/ui/alert-dialog"
+10.40 > 40 | import { cn } from "@/lib/utils"
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   41 | import type { Booking } from "@/app/admin/page"
+10.40   42 | import { adminApi } from "@/lib/api"
+10.40   43 | import { ReservationStatusBadge } from "@/components/admin/reservation-status-badge"
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/admin/edit-booking-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/admin/edit-booking-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/booking-form.tsx:21:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   19 |   SelectValue,
+10.40   20 | } from "@/components/ui/select"
+10.40 > 21 | import { cn } from "@/lib/utils"
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   22 | import { format } from "date-fns"
+10.40   23 | import { ru } from "date-fns/locale"
+10.40   24 | import { CalendarIcon, Check, Users, User, Phone, MessageSquare, UtensilsCrossed, Timer, M...
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import trace:
+10.40   Server Component:
+10.40     ./components/booking-form.tsx
+10.40     ./app/page.tsx
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/ui/alert-dialog.tsx:6:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   4 | import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog'
+10.40   5 |
+10.40 > 6 | import { cn } from '@/lib/utils'
+10.40     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   7 | import { buttonVariants } from '@/components/ui/button'
+10.40   8 |
+10.40   9 | function AlertDialog({
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/ui/alert-dialog.tsx [Client Component Browser]
+10.40     ./components/admin/edit-booking-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/ui/alert-dialog.tsx [Client Component SSR]
+10.40     ./components/admin/edit-booking-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/ui/badge.tsx:5:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   3 | import { cva, type VariantProps } from 'class-variance-authority'
+10.40   4 |
+10.40 > 5 | import { cn } from '@/lib/utils'
+10.40     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   6 |
+10.40   7 | const badgeVariants = cva(
+10.40   8 |   'inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-mediu...
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/ui/badge.tsx [Client Component Browser]
+10.40     ./components/admin/reservation-status-badge.tsx [Client Component Browser]
+10.40     ./components/admin/edit-booking-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/ui/badge.tsx [Client Component SSR]
+10.40     ./components/admin/reservation-status-badge.tsx [Client Component SSR]
+10.40     ./components/admin/edit-booking-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/ui/button.tsx:5:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   3 | import { cva, type VariantProps } from 'class-variance-authority'
+10.40   4 |
+10.40 > 5 | import { cn } from '@/lib/utils'
+10.40     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   6 |
+10.40   7 | const buttonVariants = cva(
+10.40   8 |   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-...
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/ui/button.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/ui/button.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/ui/calendar.tsx:11:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40    9 | import { DayButton, DayPicker, getDefaultClassNames } from 'react-day-picker'
+10.40   10 |
+10.40 > 11 | import { cn } from '@/lib/utils'
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   12 | import { Button, buttonVariants } from '@/components/ui/button'
+10.40   13 |
+10.40   14 | function Calendar({
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/ui/calendar.tsx [Client Component Browser]
+10.40     ./components/admin/analytics-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/ui/calendar.tsx [Client Component SSR]
+10.40     ./components/admin/analytics-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/ui/dialog.tsx:7:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40    5 | import { XIcon } from 'lucide-react'
+10.40    6 |
+10.40 >  7 | import { cn } from '@/lib/utils'
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40    8 |
+10.40    9 | function Dialog({
+10.40   10 |   ...props
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/ui/dialog.tsx [Client Component Browser]
+10.40     ./components/admin/manage-telegram-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/ui/dialog.tsx [Client Component SSR]
+10.40     ./components/admin/manage-telegram-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/ui/input.tsx:3:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   1 | import * as React from 'react'
+10.40   2 |
+10.40 > 3 | import { cn } from '@/lib/utils'
+10.40     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   4 |
+10.40   5 | function Input({ className, type, ...props }: React.ComponentProps<'input'>) {
+10.40   6 |   return (
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/ui/input.tsx [Client Component Browser]
+10.40     ./components/admin/manage-telegram-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/ui/input.tsx [Client Component SSR]
+10.40     ./components/admin/manage-telegram-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/ui/label.tsx:6:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   4 | import * as LabelPrimitive from '@radix-ui/react-label'
+10.40   5 |
+10.40 > 6 | import { cn } from '@/lib/utils'
+10.40     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   7 |
+10.40   8 | function Label({
+10.40   9 |   className,
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/ui/label.tsx [Client Component Browser]
+10.40     ./components/admin/manage-telegram-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/ui/label.tsx [Client Component SSR]
+10.40     ./components/admin/manage-telegram-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/ui/popover.tsx:6:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   4 | import * as PopoverPrimitive from '@radix-ui/react-popover'
+10.40   5 |
+10.40 > 6 | import { cn } from '@/lib/utils'
+10.40     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   7 |
+10.40   8 | function Popover({
+10.40   9 |   ...props
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/ui/popover.tsx [Client Component Browser]
+10.40     ./components/admin/analytics-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/ui/popover.tsx [Client Component SSR]
+10.40     ./components/admin/analytics-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/ui/select.tsx:7:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40    5 | import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
+10.40    6 |
+10.40 >  7 | import { cn } from '@/lib/utils'
+10.40      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40    8 |
+10.40    9 | function Select({
+10.40   10 |   ...props
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/ui/select.tsx [Client Component Browser]
+10.40     ./components/admin/manage-tables-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/ui/select.tsx [Client Component SSR]
+10.40     ./components/admin/manage-tables-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/ui/switch.tsx:6:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   4 | import * as SwitchPrimitive from '@radix-ui/react-switch'
+10.40   5 |
+10.40 > 6 | import { cn } from '@/lib/utils'
+10.40     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   7 |
+10.40   8 | function Switch({
+10.40   9 |   className,
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/ui/switch.tsx [Client Component Browser]
+10.40     ./components/admin/manage-schedule-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/ui/switch.tsx [Client Component SSR]
+10.40     ./components/admin/manage-schedule-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40 ./components/ui/textarea.tsx:3:1
+10.40 Module not found: Can't resolve '@/lib/utils'
+10.40   1 | import * as React from 'react'
+10.40   2 |
+10.40 > 3 | import { cn } from '@/lib/utils'
+10.40     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10.40   4 |
+10.40   5 | function Textarea({ className, ...props }: React.ComponentProps<'textarea'>) {
+10.40   6 |   return (
+10.40 
+10.40 Import map: aliased to relative './lib/utils' inside of [project]/
+10.40 
+10.40 
+10.40 Import traces:
+10.40   Client Component Browser:
+10.40     ./components/ui/textarea.tsx [Client Component Browser]
+10.40     ./components/admin/edit-booking-modal.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Client Component Browser]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40   Client Component SSR:
+10.40     ./components/ui/textarea.tsx [Client Component SSR]
+10.40     ./components/admin/edit-booking-modal.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Client Component SSR]
+10.40     ./app/admin/page.tsx [Server Component]
+10.40 
+10.40 https://nextjs.org/docs/messages/module-not-found
+10.40 
+10.40 
+10.40     at <unknown> (./app/admin/page.tsx:18:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/admin/analytics-modal.tsx:29:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/admin/block-table-modal.tsx:31:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/admin/booking-modal.tsx:42:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/admin/edit-booking-modal.tsx:42:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/admin/manage-schedule-modal.tsx:5:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/admin/manage-tables-modal.tsx:5:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/admin/manage-telegram-modal.tsx:4:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/booking-form.tsx:25:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./app/admin/page.tsx:16:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/admin/admin-header.tsx:14:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/admin/analytics-modal.tsx:27:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/admin/block-table-modal.tsx:29:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/admin/booking-modal.tsx:40:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/admin/edit-booking-modal.tsx:40:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/booking-form.tsx:21:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/ui/alert-dialog.tsx:6:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/ui/badge.tsx:5:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/ui/button.tsx:5:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/ui/calendar.tsx:11:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/ui/dialog.tsx:7:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/ui/input.tsx:3:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/ui/label.tsx:6:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/ui/popover.tsx:6:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/ui/select.tsx:7:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/ui/switch.tsx:6:1)
+10.40     at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+10.40     at <unknown> (./components/ui/textarea.tsx:3:1)
+[+] up 36/39 <unknown> (https://nextjs.org/docs/messages/module-not-found)
