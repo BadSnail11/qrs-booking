@@ -75,6 +75,8 @@ def create_booking():
         return jsonify({"error": str(exc)}), 400
 
     full_reservation = get_reservation(reservation["id"])
+    if full_reservation:
+        send_reservation_email("created", full_reservation)
     if full_reservation and full_reservation["status"] == "pending":
         notify_pending_reservation(full_reservation)
 

@@ -68,7 +68,14 @@ def send_reservation_email(event_type, reservation):
         )
         return {"enabled": bool(RESEND_API_KEY and RESEND_FROM_EMAIL), "sent": False}
 
-    if event_type == "confirmed":
+    if event_type == "created":
+        if reservation.get("status") == "confirmed":
+            subject = "Ваше бронирование создано и подтверждено"
+            intro = "Ваше бронирование успешно создано и уже подтверждено."
+        else:
+            subject = "Ваша заявка на бронирование создана"
+            intro = "Ваша заявка на бронирование отправлена. Мы сообщим вам после подтверждения."
+    elif event_type == "confirmed":
         subject = "Ваше бронирование подтверждено"
         intro = "Хорошая новость: ваше бронирование подтверждено."
     elif event_type == "edited":
