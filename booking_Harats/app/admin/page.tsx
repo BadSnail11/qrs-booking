@@ -95,6 +95,14 @@ export default function AdminPage() {
   }, [dateStr, searchQuery])
 
   useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void loadData()
+    }, 15000)
+
+    return () => window.clearInterval(intervalId)
+  }, [dateStr, searchQuery])
+
+  useEffect(() => {
     if (typeof window === "undefined") return
     const params = new URLSearchParams(window.location.search)
     const dateParam = params.get("date")
