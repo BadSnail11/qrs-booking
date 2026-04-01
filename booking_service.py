@@ -499,6 +499,10 @@ def get_slots_for_day(date_value, guests):
     hour = open_time_value.hour
     minute = open_time_value.minute
     while True:
+        current_minutes = hour * 60 + minute
+        close_minutes = close_time_value.hour * 60 + close_time_value.minute
+        if current_minutes > close_minutes:
+            break
         if not (0 <= hour <= 23 and 0 <= minute <= 59):
             logger.error(
                 "Invalid slot time generated in get_slots_for_day: date=%s hour=%s minute=%s open=%s close=%s step=%s",
@@ -510,8 +514,6 @@ def get_slots_for_day(date_value, guests):
                 AVAILABILITY_STEP_MINUTES,
             )
         slot_time = datetime.combine(date_obj, time(hour, minute))
-        if slot_time.time() > close_time_value:
-            break
         combo = pick_best_table_combo(guests, slot_time)
         slots.append(
             {
