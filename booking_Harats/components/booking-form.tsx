@@ -462,7 +462,7 @@ export function BookingForm() {
             )}
             {availabilitySchedule?.isOpen && availabilitySchedule.openTime && availabilitySchedule.closeTime && (
               <p className="text-xs text-muted-foreground">
-                График на день: {availabilitySchedule.openTime} - {availabilitySchedule.closeTime}
+                График бронирования на день: {availabilitySchedule.openTime} - {availabilitySchedule.closeTime}
               </p>
             )}
           </div>

@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS weekly_schedule (
     is_open BOOLEAN NOT NULL DEFAULT TRUE,
     open_time TIME NOT NULL,
     close_time TIME NOT NULL,
-    CHECK (close_time <> open_time)
+    CHECK (close_time > open_time)
 );
 
 INSERT INTO weekly_schedule (weekday, day_name, is_open, open_time, close_time)
