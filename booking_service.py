@@ -32,7 +32,27 @@ def parse_iso_dt(value):
 
 
 def combine_date_time(date_value, time_value):
-    return datetime.fromisoformat(f"{date_value}T{time_value}:00")
+    date_obj = datetime.strptime(date_value, "%Y-%m-%d").date()
+    requested_time = parse_time_value(time_value)
+    if requested_time is None:
+        raise ValueError("time_value is required")
+
+    reservation_dt = datetime.combine(date_obj, requested_time)
+    schedule = get_schedule_for_date(date_value)
+    open_time_value = parse_time_value(schedule.get("openTime"))
+    close_time_value = parse_time_value(schedule.get("closeTime"))
+
+    # Overnight schedules (e.g. 18:00 -> 02:00) treat after-midnight times as next-day datetimes.
+    if (
+        schedule.get("isOpen")
+        and open_time_value is not None
+        and close_time_value is not None
+        and close_time_value <= open_time_value
+        and requested_time < open_time_value
+    ):
+        reservation_dt += timedelta(days=1)
+
+    return reservation_dt
 
 
 def split_customer_name(customer_name):
@@ -146,8 +166,8 @@ def update_schedule_day(weekday, is_open, open_time_value=None, close_time_value
     ensure_weekly_schedule()
     open_time_parsed = parse_time_value(open_time_value) or default_open_time()
     close_time_parsed = parse_time_value(close_time_value) or default_close_time()
-    if is_open and close_time_parsed <= open_time_parsed:
-        raise ValueError("close_time must be later than open_time")
+    if is_open and close_time_parsed == open_time_parsed:
+        raise ValueError("close_time must be different from open_time")
 
     row = execute_returning(
         """
@@ -493,13 +513,13 @@ def get_slots_for_day(date_value, guests):
 
     open_time_value = parse_time_value(schedule["openTime"])
     close_time_value = parse_time_value(schedule["closeTime"])
+    start_dt = datetime.combine(date_obj, open_time_value)
+    end_dt = datetime.combine(date_obj, close_time_value)
+    if close_time_value <= open_time_value:
+        end_dt += timedelta(days=1)
     slots = []
-    hour = open_time_value.hour
-    minute = open_time_value.minute
-    while True:
-        slot_time = datetime.combine(date_obj, time(hour, minute))
-        if slot_time.time() > close_time_value:
-            break
+    slot_time = start_dt
+    while slot_time <= end_dt:
         combo = pick_best_table_combo(guests, slot_time)
         slots.append(
             {
@@ -510,10 +530,7 @@ def get_slots_for_day(date_value, guests):
                 "confirmation_mode": "automatic" if combo and combo["auto_confirm"] else ("manual" if combo else None),
             }
         )
-        minute += AVAILABILITY_STEP_MINUTES
-        while minute >= 60:
-            hour += 1
-            minute -= 60
+        slot_time += timedelta(minutes=AVAILABILITY_STEP_MINUTES)
     return {"schedule": schedule, "slots": slots}
 
 
