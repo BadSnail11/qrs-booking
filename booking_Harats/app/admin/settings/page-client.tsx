@@ -45,6 +45,8 @@ const dayLabels: Record<string, string> = {
   sunday: "Воскресенье",
 }
 
+const TIME_24H_PATTERN = "^([01]\\d|2[0-3]):([0-5]\\d)$"
+
 export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" | "schedule" | "telegram" }) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState(initialTab)
@@ -254,10 +256,25 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
     }
   }
 
+  const saveButtonConfig =
+    activeTab === "tables"
+      ? {
+          label: "Сохранить столы",
+          onClick: () => void handleSaveTables(),
+          disabled: isSavingTables,
+        }
+      : activeTab === "schedule"
+        ? {
+            label: "Сохранить график",
+            onClick: () => void handleSaveSchedule(),
+            disabled: isSavingSchedule,
+          }
+        : null
+
   return (
     <div className="min-h-screen bg-muted/30">
-      <div className="border-b bg-card">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 lg:px-6">
+      <div className="sticky top-0 z-20 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 lg:px-6">
           <div className="flex items-center gap-3">
             <Button asChild variant="outline" size="icon">
               <Link href="/admin">
@@ -269,9 +286,11 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
               <p className="text-sm text-muted-foreground">Столы, график и Telegram уведомления</p>
             </div>
           </div>
-          <Button variant="outline" onClick={() => void loadData()}>
-            Обновить
-          </Button>
+          {saveButtonConfig ? (
+            <Button onClick={saveButtonConfig.onClick} disabled={saveButtonConfig.disabled} className="shrink-0">
+              {saveButtonConfig.label}
+            </Button>
+          ) : <div />}
         </div>
       </div>
 
@@ -392,12 +411,6 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
               </div>
 
               {tablesError && <div className="text-sm text-destructive">{tablesError}</div>}
-
-              <div className="flex justify-end">
-                <Button onClick={() => void handleSaveTables()} disabled={isSavingTables}>
-                  Сохранить все
-                </Button>
-              </div>
             </TabsContent>
 
             <TabsContent value="schedule" className="space-y-6">
@@ -419,11 +432,29 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
                       </div>
                       <div className="space-y-2">
                         <Label>С</Label>
-                        <Input type="time" value={draft.openTime} onChange={(e) => updateScheduleDraft(day.weekday, { openTime: e.target.value })} disabled={!draft.isOpen} />
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="11:00"
+                          pattern={TIME_24H_PATTERN}
+                          title="Формат времени: ЧЧ:ММ"
+                          value={draft.openTime}
+                          onChange={(e) => updateScheduleDraft(day.weekday, { openTime: e.target.value })}
+                          disabled={!draft.isOpen}
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>До</Label>
-                        <Input type="time" value={draft.closeTime} onChange={(e) => updateScheduleDraft(day.weekday, { closeTime: e.target.value })} disabled={!draft.isOpen} />
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="22:00"
+                          pattern={TIME_24H_PATTERN}
+                          title="Формат времени: ЧЧ:ММ"
+                          value={draft.closeTime}
+                          onChange={(e) => updateScheduleDraft(day.weekday, { closeTime: e.target.value })}
+                          disabled={!draft.isOpen}
+                        />
                       </div>
                     </div>
                   )
@@ -431,12 +462,6 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
               </div>
 
               {scheduleError && <div className="text-sm text-destructive">{scheduleError}</div>}
-
-              <div className="flex justify-end">
-                <Button onClick={() => void handleSaveSchedule()} disabled={isSavingSchedule}>
-                  Сохранить все
-                </Button>
-              </div>
             </TabsContent>
 
             <TabsContent value="telegram" className="space-y-6">

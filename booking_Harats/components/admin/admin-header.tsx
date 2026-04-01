@@ -2,7 +2,7 @@
 
 import { format, addDays, subDays } from "date-fns"
 import { ru } from "date-fns/locale"
-import { Search, CalendarIcon, ChevronLeft, ChevronRight, BarChart3, Menu, Bell, Armchair, Clock3, Send } from "lucide-react"
+import { Search, CalendarIcon, ChevronLeft, ChevronRight, BarChart3, Menu, Bell, Settings } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -19,9 +19,7 @@ interface AdminHeaderProps {
   selectedDate: Date
   onDateChange: (date: Date) => void
   onAnalyticsClick: () => void
-  onManageTablesClick: () => void
-  onManageScheduleClick: () => void
-  onManageTelegramClick: () => void
+  onSettingsClick: () => void
   pendingCount?: number
   onToggleSidebar?: () => void
 }
@@ -32,9 +30,7 @@ export function AdminHeader({
   selectedDate,
   onDateChange,
   onAnalyticsClick,
-  onManageTablesClick,
-  onManageScheduleClick,
-  onManageTelegramClick,
+  onSettingsClick,
   pendingCount = 0,
   onToggleSidebar,
 }: AdminHeaderProps) {
@@ -79,31 +75,11 @@ export function AdminHeader({
           <Button
             variant="outline"
             size="sm"
-            onClick={onManageScheduleClick}
+            onClick={onSettingsClick}
             className="hidden gap-2 sm:flex"
           >
-            <Clock3 className="h-4 w-4" />
-            <span className="hidden md:inline">График</span>
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onManageTelegramClick}
-            className="hidden gap-2 sm:flex"
-          >
-            <Send className="h-4 w-4" />
-            <span className="hidden md:inline">Telegram</span>
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onManageTablesClick}
-            className="hidden gap-2 sm:flex"
-          >
-            <Armchair className="h-4 w-4" />
-            <span className="hidden md:inline">Столы</span>
+            <Settings className="h-4 w-4" />
+            <span className="hidden md:inline">Настройки</span>
           </Button>
 
           <Button
@@ -120,28 +96,10 @@ export function AdminHeader({
           <Button
             variant="outline"
             size="icon"
-            onClick={onManageScheduleClick}
+            onClick={onSettingsClick}
             className="h-9 w-9 sm:hidden"
           >
-            <Clock3 className="h-4 w-4" />
-          </Button>
-
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={onManageTelegramClick}
-            className="h-9 w-9 sm:hidden"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={onManageTablesClick}
-            className="h-9 w-9 sm:hidden"
-          >
-            <Armchair className="h-4 w-4" />
+            <Settings className="h-4 w-4" />
           </Button>
 
           <Button

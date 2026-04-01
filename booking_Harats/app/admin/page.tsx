@@ -209,9 +209,7 @@ export default function AdminPage() {
         selectedDate={selectedDate}
         onDateChange={setSelectedDate}
         onAnalyticsClick={() => setIsAnalyticsModalOpen(true)}
-        onManageTablesClick={() => router.push("/admin/settings?tab=tables")}
-        onManageScheduleClick={() => router.push("/admin/settings?tab=schedule")}
-        onManageTelegramClick={() => router.push("/admin/settings?tab=telegram")}
+        onSettingsClick={() => router.push("/admin/settings")}
         pendingCount={pendingBookings.length}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
       />

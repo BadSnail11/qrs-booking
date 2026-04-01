@@ -26,6 +26,8 @@ const dayLabels: Record<string, string> = {
   sunday: "Воскресенье",
 }
 
+const TIME_24H_PATTERN = "^([01]\\d|2[0-3]):([0-5]\\d)$"
+
 type ScheduleDraft = {
   isOpen: boolean
   openTime: string
@@ -121,7 +123,11 @@ export function ManageScheduleModal({
                 <div className="space-y-2">
                   <Label>С</Label>
                   <Input
-                    type="time"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="11:00"
+                    pattern={TIME_24H_PATTERN}
+                    title="Формат времени: ЧЧ:ММ"
                     value={draft.openTime}
                     onChange={(e) => updateDraft(day.weekday, { openTime: e.target.value })}
                     disabled={!draft.isOpen}
@@ -130,7 +136,11 @@ export function ManageScheduleModal({
                 <div className="space-y-2">
                   <Label>До</Label>
                   <Input
-                    type="time"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="22:00"
+                    pattern={TIME_24H_PATTERN}
+                    title="Формат времени: ЧЧ:ММ"
                     value={draft.closeTime}
                     onChange={(e) => updateDraft(day.weekday, { closeTime: e.target.value })}
                     disabled={!draft.isOpen}
