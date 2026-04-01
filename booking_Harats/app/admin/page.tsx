@@ -149,7 +149,7 @@ export default function AdminPage() {
   const confirmedBookings = filteredBookings
     .filter(b => b.status === "confirmed")
     .sort((a, b) => a.time.localeCompare(b.time))
-  const visibleBookings = reservationViewMode === "confirmed"
+  const listBookings = reservationViewMode === "confirmed"
     ? confirmedBookings
     : filteredBookings.filter((b) => b.status === "pending" || b.status === "cancelled")
 
@@ -237,7 +237,7 @@ export default function AdminPage() {
           </Button>
         </div>
         <span className="text-xs text-muted-foreground">
-          {visibleBookings.length} бронирований
+          {listBookings.length} бронирований
         </span>
       </div>
       
@@ -284,12 +284,12 @@ export default function AdminPage() {
           {/* Mobile list view */}
           {mobileView === "list" && (
             <div className="space-y-2 lg:hidden">
-              {visibleBookings.length === 0 ? (
+              {listBookings.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground">
                   Нет бронирований на выбранную дату
                 </div>
               ) : (
-                visibleBookings
+                listBookings
                   .sort((a, b) => a.time.localeCompare(b.time))
                   .map((booking) => {
                     const tableLabel =
@@ -341,7 +341,7 @@ export default function AdminPage() {
           )}>
             <TablesGrid
               tables={tables}
-              bookings={visibleBookings}
+              bookings={confirmedBookings}
               onEditBooking={handleEditBooking}
               onBlockTable={handleBlockTable}
             />

@@ -121,14 +121,6 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
     void loadData()
   }, [])
 
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      void loadData()
-    }, 15000)
-
-    return () => window.clearInterval(intervalId)
-  }, [])
-
   const setTab = (tab: string) => {
     if (tab !== "tables" && tab !== "schedule" && tab !== "telegram") return
     setActiveTab(tab)
