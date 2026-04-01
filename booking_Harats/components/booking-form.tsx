@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -25,6 +25,7 @@ import { userApi } from "@/lib/api"
 
 const guestOptions = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
 const setOptions = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+const USER_BOOKING_DRAFT_KEY = "qrs-user-booking-draft"
 
 type ReservationDetails = {
   id: string
@@ -46,6 +47,19 @@ type AvailabilitySlot = {
   available: boolean
   suggested_table_ids: number[]
   confirmation_mode?: "automatic" | "manual" | null
+}
+
+type UserBookingDraft = {
+  date: string | null
+  formData: {
+    firstName: string
+    lastName: string
+    phone: string
+    email: string
+    guests: string
+    set: string
+    time: string
+  }
 }
 
 export function BookingForm() {
@@ -82,6 +96,34 @@ export function BookingForm() {
     () => availableSlots.filter((slot) => slot.confirmation_mode === "manual"),
     [availableSlots]
   )
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const rawDraft = window.localStorage.getItem(USER_BOOKING_DRAFT_KEY)
+      if (!rawDraft) return
+      const draft = JSON.parse(rawDraft) as UserBookingDraft
+      setFormData(draft.formData)
+      if (draft.date) {
+        const restoredDate = new Date(`${draft.date}T00:00:00`)
+        setDate(restoredDate)
+        if (draft.formData.guests) {
+          void loadAvailability(restoredDate, draft.formData.guests)
+        }
+      }
+    } catch {
+      window.localStorage.removeItem(USER_BOOKING_DRAFT_KEY)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || isSubmitted) return
+    const draft: UserBookingDraft = {
+      date: date ? format(date, "yyyy-MM-dd") : null,
+      formData,
+    }
+    window.localStorage.setItem(USER_BOOKING_DRAFT_KEY, JSON.stringify(draft))
+  }, [date, formData, isSubmitted])
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -122,6 +164,9 @@ export function BookingForm() {
       const reservation = result.reservation as ReservationDetails
       setReservationDetails(reservation)
       setIsSubmitted(true)
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(USER_BOOKING_DRAFT_KEY)
+      }
       setFormData({
         firstName: "",
         lastName: "",

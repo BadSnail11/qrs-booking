@@ -26,6 +26,22 @@ type TableOption = {
 
 const guestOptions = Array.from({ length: 10 }, (_, i) => String(i + 1))
 const setOptions = Array.from({ length: 10 }, (_, i) => String(i + 1))
+const ADMIN_BOOKING_DRAFT_KEY = "qrs-admin-booking-draft"
+
+type AdminBookingDraft = {
+  date: string | null
+  formData: {
+    firstName: string
+    lastName: string
+    phone: string
+    email: string
+    guests: string
+    sets: string
+    time: string
+    tableOptionKey: string
+    note: string
+  }
+}
 
 export function AdminCreateReservationPageClient({
   initialDate,
@@ -90,6 +106,30 @@ export function AdminCreateReservationPageClient({
     if (!dateValue) return
     void loadData(dateValue)
   }, [dateValue])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const rawDraft = window.localStorage.getItem(ADMIN_BOOKING_DRAFT_KEY)
+      if (!rawDraft) return
+      const draft = JSON.parse(rawDraft) as AdminBookingDraft
+      setFormData(draft.formData)
+      if (draft.date) {
+        setDate(new Date(`${draft.date}T00:00:00`))
+      }
+    } catch {
+      window.localStorage.removeItem(ADMIN_BOOKING_DRAFT_KEY)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const draft: AdminBookingDraft = {
+      date: date ? format(date, "yyyy-MM-dd") : null,
+      formData,
+    }
+    window.localStorage.setItem(ADMIN_BOOKING_DRAFT_KEY, JSON.stringify(draft))
+  }, [date, formData])
 
   const activeTables = useMemo(
     () => tables.filter((table) => table.isActive !== false),
@@ -256,6 +296,9 @@ export function AdminCreateReservationPageClient({
         note: formData.note || undefined,
         force,
       })
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(ADMIN_BOOKING_DRAFT_KEY)
+      }
       window.location.href = backHref
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Не удалось создать бронь")

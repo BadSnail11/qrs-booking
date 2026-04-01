@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { AdminHeader } from "@/components/admin/admin-header"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { TablesGrid } from "@/components/admin/tables-grid"
-import { EditBookingModal } from "@/components/admin/edit-booking-modal"
 import { BlockTableModal } from "@/components/admin/block-table-modal"
 import { AnalyticsModal } from "@/components/admin/analytics-modal"
 import { Button } from "@/components/ui/button"
@@ -66,10 +65,8 @@ export default function AdminPage() {
   const [reservationViewMode, setReservationViewMode] = useState<"queue" | "confirmed">("queue")
   
   // Modal states
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false)
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false)
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
 
   const dateStr = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate])
@@ -116,24 +113,15 @@ export default function AdminPage() {
   }, [])
 
   useEffect(() => {
-    if (typeof window === "undefined" || bookings.length === 0) return
+    if (typeof window === "undefined") return
     const params = new URLSearchParams(window.location.search)
     const reservationId = params.get("reservationId")
     if (!reservationId) return
-    const booking = bookings.find((item) => item.id === reservationId)
-    if (!booking) return
-    setSelectedBooking(booking)
-    setIsEditModalOpen(true)
-  }, [bookings])
-
-  const clearReservationParams = () => {
-    if (typeof window === "undefined") return
-    const url = new URL(window.location.href)
-    url.searchParams.delete("reservationId")
-    url.searchParams.delete("date")
-    url.searchParams.delete("view")
-    window.history.replaceState({}, "", url.toString())
-  }
+    const paramsOut = new URLSearchParams()
+    if (dateStr) paramsOut.set("date", dateStr)
+    if (reservationViewMode) paramsOut.set("view", reservationViewMode)
+    router.replace(`/admin/reservations/${reservationId}/edit?${paramsOut.toString()}`)
+  }, [router, dateStr, reservationViewMode])
 
   const filteredBookings = bookings.filter((b) => {
     const matchesDate = b.date === dateStr
@@ -154,43 +142,16 @@ export default function AdminPage() {
     : filteredBookings.filter((b) => b.status === "pending" || b.status === "cancelled")
 
   const handleEditBooking = (booking: Booking) => {
-    setSelectedBooking(booking)
-    setIsEditModalOpen(true)
+    const params = new URLSearchParams({
+      date: dateStr,
+      view: reservationViewMode,
+    })
+    router.push(`/admin/reservations/${booking.id}/edit?${params.toString()}`)
   }
 
   const handleBlockTable = (table: Table) => {
     setSelectedTable(table)
     setIsBlockModalOpen(true)
-  }
-
-  const handleSaveBooking = (updatedBooking: Booking) => {
-    setBookings((prev) => prev.map((b) => (b.id === updatedBooking.id ? updatedBooking : b)))
-    setIsEditModalOpen(false)
-    setSelectedBooking(null)
-  }
-
-  const handleConfirmBooking = (updatedBooking: Booking) => {
-    setBookings((prev) => prev.map((b) => (b.id === updatedBooking.id ? updatedBooking : b)))
-    setSelectedBooking(null)
-    setIsEditModalOpen(false)
-  }
-
-  const handleCancelBooking = (updatedBooking: Booking) => {
-    setBookings((prev) => prev.map((b) => (b.id === updatedBooking.id ? updatedBooking : b)))
-    setSelectedBooking(null)
-    setIsEditModalOpen(false)
-  }
-
-  const handleDeleteBooking = (bookingId: string) => {
-    setBookings((prev) => prev.filter((b) => b.id !== bookingId))
-    setSelectedBooking(null)
-    setIsEditModalOpen(false)
-  }
-
-  const handleRestoreBooking = (updatedBooking: Booking) => {
-    setBookings((prev) => prev.map((b) => (b.id === updatedBooking.id ? updatedBooking : b)))
-    setSelectedBooking(null)
-    setIsEditModalOpen(false)
   }
 
   const openCreateBookingPage = () => {
@@ -357,21 +318,6 @@ export default function AdminPage() {
       >
         <Plus className="h-6 w-6 text-foreground" />
       </Button>
-
-      <EditBookingModal
-        isOpen={isEditModalOpen}
-        onClose={() => {
-          setIsEditModalOpen(false)
-          setSelectedBooking(null)
-          clearReservationParams()
-        }}
-        booking={selectedBooking}
-        onSave={handleSaveBooking}
-        onConfirm={handleConfirmBooking}
-        onCancel={handleCancelBooking}
-        onRestore={handleRestoreBooking}
-        onDelete={handleDeleteBooking}
-      />
 
       <BlockTableModal
         isOpen={isBlockModalOpen}
