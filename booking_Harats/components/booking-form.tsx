@@ -4,7 +4,6 @@ import { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Calendar } from "@/components/ui/calendar"
 import {
   Popover,
@@ -21,7 +20,7 @@ import {
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
-import { CalendarIcon, Check, Users, User, Phone, MessageSquare, UtensilsCrossed, Timer, Mail } from "lucide-react"
+import { CalendarIcon, Check, Users, User, Phone, UtensilsCrossed, Timer, Mail } from "lucide-react"
 import { userApi } from "@/lib/api"
 
 const guestOptions = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
@@ -65,7 +64,6 @@ export function BookingForm() {
     guests: "",
     set: "",
     time: "",
-    note: "",
   })
 
   const dateValue = useMemo(() => (date ? format(date, "yyyy-MM-dd") : ""), [date])
@@ -119,7 +117,6 @@ export function BookingForm() {
         sets: parseInt(formData.set || "1", 10),
         date: dateValue,
         time: formData.time,
-        note: formData.note || undefined,
       })
 
       const reservation = result.reservation as ReservationDetails
@@ -133,7 +130,6 @@ export function BookingForm() {
         guests: "",
         set: "",
         time: "",
-        note: "",
       })
       setDate(undefined)
       setAvailableSlots([])
@@ -401,18 +397,6 @@ export function BookingForm() {
             )}
           </div>
         </div>
-
-        <div className="h-px bg-border" />
-
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-            <MessageSquare className="h-3.5 w-3.5" />
-            <span>Примечание</span>
-            <span className="ml-auto text-[10px] normal-case tracking-normal text-muted-foreground/50">Необязательно</span>
-          </div>
-          <Textarea placeholder="Особые пожелания, аллергии, праздник..." value={formData.note} onChange={(e) => handleInputChange("note", e.target.value)} className="min-h-[100px] resize-none rounded-xl border-border bg-background text-base placeholder:text-muted-foreground/50" />
-        </div>
-
         {submitError && <p className="text-sm text-destructive">{submitError}</p>}
 
         <Button

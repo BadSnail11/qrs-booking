@@ -1,6 +1,6 @@
 "use client"
 
-import { Users, MessageSquare, Plus, X } from "lucide-react"
+import { Users, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { Booking } from "@/app/admin/page"
 import { ReservationStatusBadge } from "@/components/admin/reservation-status-badge"
@@ -116,11 +116,6 @@ export function AdminSidebar({
                             <Users className="h-3 w-3" />
                             {booking.guests}
                           </span>
-                          {booking.note && (
-                            <span className="flex items-center gap-1">
-                              <MessageSquare className="h-3 w-3" />
-                            </span>
-                          )}
                         </div>
                       </button>
                     ))
@@ -192,11 +187,6 @@ export function AdminSidebar({
                         <Users className="h-3 w-3" />
                         {booking.guests}
                       </span>
-                      {booking.note && (
-                        <span className="flex items-center gap-1">
-                          <MessageSquare className="h-3 w-3" />
-                        </span>
-                      )}
                     </div>
                   </button>
                   ))

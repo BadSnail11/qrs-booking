@@ -7,7 +7,6 @@ import { CalendarIcon, Phone as PhoneIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Calendar } from "@/components/ui/calendar"
 import {
   Dialog,
@@ -81,7 +80,6 @@ export function EditBookingModal({
     guests: "",
     sets: "",
     time: "",
-    note: "",
   })
 
   useEffect(() => {
@@ -94,7 +92,6 @@ export function EditBookingModal({
         guests: String(booking.guests),
         sets: String(booking.sets),
         time: booking.time,
-        note: booking.note || "",
       })
       setDate(new Date(booking.date))
     }
@@ -128,7 +125,6 @@ export function EditBookingModal({
         sets: parseInt(formData.sets, 10),
         date: format(date, "yyyy-MM-dd"),
         time: formData.time,
-        note: formData.note || undefined,
         tableId: booking.tableId,
         confirm_call_notice: true,
       }) as Booking
@@ -307,15 +303,6 @@ export function EditBookingModal({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Примечание</Label>
-              <Textarea
-                value={formData.note}
-                onChange={(e) => handleInputChange("note", e.target.value)}
-                className="resize-none"
-              />
             </div>
           </div>
 

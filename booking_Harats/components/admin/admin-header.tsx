@@ -2,7 +2,7 @@
 
 import { format, addDays, subDays } from "date-fns"
 import { ru } from "date-fns/locale"
-import { Search, CalendarIcon, ChevronLeft, ChevronRight, BarChart3, Menu, Bell, Armchair, Clock3, RefreshCw, Send } from "lucide-react"
+import { Search, CalendarIcon, ChevronLeft, ChevronRight, BarChart3, Menu, Bell, Armchair, Clock3, Send } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -22,7 +22,6 @@ interface AdminHeaderProps {
   onManageTablesClick: () => void
   onManageScheduleClick: () => void
   onManageTelegramClick: () => void
-  onRefreshClick: () => void
   pendingCount?: number
   onToggleSidebar?: () => void
 }
@@ -36,7 +35,6 @@ export function AdminHeader({
   onManageTablesClick,
   onManageScheduleClick,
   onManageTelegramClick,
-  onRefreshClick,
   pendingCount = 0,
   onToggleSidebar,
 }: AdminHeaderProps) {
@@ -58,7 +56,7 @@ export function AdminHeader({
           </Button>
           
           <h1 className="text-xl font-semibold lg:text-2xl">
-            <span className="text-muted-foreground">Tables</span>
+            <span className="text-muted-foreground">Harat's Tables</span>
           </h1>
         </div>
         
@@ -78,16 +76,6 @@ export function AdminHeader({
             </Button>
           )}
           
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onRefreshClick}
-            className="hidden gap-2 sm:flex"
-          >
-            <RefreshCw className="h-4 w-4" />
-            <span className="hidden md:inline">Обновить</span>
-          </Button>
-
           <Button
             variant="outline"
             size="sm"
@@ -129,15 +117,6 @@ export function AdminHeader({
           </Button>
           
           {/* Mobile analytics icon */}
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={onRefreshClick}
-            className="h-9 w-9 sm:hidden"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-
           <Button
             variant="outline"
             size="icon"

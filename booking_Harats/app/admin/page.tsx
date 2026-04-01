@@ -212,7 +212,6 @@ export default function AdminPage() {
         onManageTablesClick={() => router.push("/admin/settings?tab=tables")}
         onManageScheduleClick={() => router.push("/admin/settings?tab=schedule")}
         onManageTelegramClick={() => router.push("/admin/settings?tab=telegram")}
-        onRefreshClick={() => void loadData()}
         pendingCount={pendingBookings.length}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
       />
@@ -326,11 +325,6 @@ export default function AdminPage() {
                             </div>
                           </div>
                         </div>
-                        {booking.note && (
-                          <div className="mt-2 text-xs text-muted-foreground">
-                            {booking.note}
-                          </div>
-                        )}
                       </button>
                     )
                   })

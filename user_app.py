@@ -68,7 +68,6 @@ def create_booking():
             email=body.get("email"),
             phone=body.get("phone"),
             sets=int(body.get("sets", 1)),
-            note=body.get("note"),
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400

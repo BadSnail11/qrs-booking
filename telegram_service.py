@@ -122,7 +122,6 @@ def notify_pending_reservation(reservation):
         f"Sets: {reservation.get('sets', 1)}",
         f"Tables: {table_label}",
         f"Confirmation code: {reservation.get('confirmation_code') or '-'}",
-        f"Note: {reservation.get('note') or '-'}",
     ]
     text = "\n".join(lines)
 

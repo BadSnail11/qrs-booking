@@ -4,13 +4,12 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
-import { ArrowLeft, CalendarIcon, AlertTriangle, Users, X, Check, Phone, Mail, MessageSquare, UtensilsCrossed, Timer } from "lucide-react"
+import { ArrowLeft, CalendarIcon, AlertTriangle, Users, X, Check, Phone, Mail, UtensilsCrossed, Timer } from "lucide-react"
 import type { Booking, ScheduleDay, Table } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -56,7 +55,6 @@ export function AdminCreateReservationPageClient({
     sets: "",
     time: "",
     tableOptionKey: "",
-    note: "",
   })
 
   const dateValue = useMemo(() => (date ? format(date, "yyyy-MM-dd") : ""), [date])
@@ -253,7 +251,6 @@ export function AdminCreateReservationPageClient({
         date: dateValue,
         time: formData.time,
         table_ids: selectedOption.tableIds,
-        note: formData.note || undefined,
         force,
       })
       window.location.href = backHref
@@ -514,17 +511,6 @@ export function AdminCreateReservationPageClient({
                   </div>
                 )}
               </div>
-
-              <div className="h-px bg-border" />
-
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  <span>Примечание</span>
-                </div>
-                <Textarea value={formData.note} onChange={(e) => handleInputChange("note", e.target.value)} placeholder="Особые пожелания..." className="min-h-[120px] resize-none rounded-xl" />
-              </div>
-
               {submitError && <div className="text-sm text-destructive">{submitError}</div>}
 
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
