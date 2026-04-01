@@ -24,6 +24,11 @@ from booking_service import (
     validate_table_selection,
 )
 from db import execute, execute_returning, query_all
+from email_service import (
+    send_reservation_cancelled_email,
+    send_reservation_confirmed_email,
+    send_reservation_updated_email,
+)
 from telegram_service import (
     add_telegram_recipient,
     delete_reservation_notifications,
@@ -338,6 +343,7 @@ def edit_reservation(reservation_id):
 
     if not updated:
         return jsonify({"error": "Reservation not found"}), 404
+    send_reservation_updated_email(updated)
     return jsonify(updated)
 
 
@@ -347,7 +353,10 @@ def confirm_pending_reservation(reservation_id):
     if not row:
         return jsonify({"error": "Pending reservation not found"}), 404
     delete_reservation_notifications(reservation_id)
-    return jsonify({"message": "Reservation confirmed", "reservation": get_reservation(reservation_id)})
+    reservation = get_reservation(reservation_id)
+    if reservation:
+        send_reservation_confirmed_email(reservation)
+    return jsonify({"message": "Reservation confirmed", "reservation": reservation})
 
 
 @app.post("/api/v1/reservations/check-table")
@@ -394,7 +403,10 @@ def cancel(reservation_id):
     row = cancel_reservation(reservation_id, reason=(request.get_json(silent=True) or {}).get("reason"))
     if not row:
         return jsonify({"error": "Reservation not found"}), 404
-    return jsonify({"message": "Reservation cancelled", "reservation": get_reservation(reservation_id)})
+    reservation = get_reservation(reservation_id)
+    if reservation:
+        send_reservation_cancelled_email(reservation)
+    return jsonify({"message": "Reservation cancelled", "reservation": reservation})
 
 
 @app.post("/api/v1/reservations/<int:reservation_id>/restore")

@@ -9,6 +9,7 @@ from booking_service import (
     get_slots_for_day,
     confirm_reservation,
 )
+from email_service import send_reservation_confirmed_email
 from telegram_service import notify_pending_reservation
 
 app = Flask(__name__)
@@ -76,6 +77,8 @@ def create_booking():
     full_reservation = get_reservation(reservation["id"])
     if full_reservation and full_reservation["status"] == "pending":
         notify_pending_reservation(full_reservation)
+    elif full_reservation and full_reservation["status"] == "confirmed":
+        send_reservation_confirmed_email(full_reservation)
 
     return (
         jsonify(
@@ -106,4 +109,7 @@ def confirm_booking(reservation_id):
 
     if not confirm_reservation(reservation_id, code):
         return jsonify({"error": "Invalid confirmation code or reservation unavailable"}), 400
-    return jsonify({"message": "Reservation confirmed", "reservation": get_reservation(reservation_id)})
+    reservation = get_reservation(reservation_id)
+    if reservation:
+        send_reservation_confirmed_email(reservation)
+    return jsonify({"message": "Reservation confirmed", "reservation": reservation})

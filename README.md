@@ -98,3 +98,19 @@ Request JSON:
 - `CLOSE_HOUR` (default `22`)
 - `MAX_COMBINED_TABLES` (default `3`)
 - `MAX_EXTRA_SEATS` (default `2`)
+- `SMTP_HOST`
+- `SMTP_PORT` (default `587`)
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_FROM_EMAIL`
+- `SMTP_FROM_NAME` (default `QRS Booking`)
+- `SMTP_USE_TLS` (default `true`)
+- `SMTP_USE_SSL` (default `false`)
+
+## Email Notifications
+
+If SMTP is configured, the backend sends emails to the guest address when:
+
+- a reservation becomes confirmed
+- a reservation is edited by admin
+- a reservation is cancelled
