@@ -26,6 +26,7 @@ from booking_service import (
 from db import execute, execute_returning, query_all
 from telegram_service import (
     add_telegram_recipient,
+    delete_reservation_notifications,
     delete_telegram_recipient,
     list_telegram_recipients,
     notify_pending_reservation,
@@ -345,6 +346,7 @@ def confirm_pending_reservation(reservation_id):
     row = admin_confirm_reservation(reservation_id)
     if not row:
         return jsonify({"error": "Pending reservation not found"}), 404
+    delete_reservation_notifications(reservation_id)
     return jsonify({"message": "Reservation confirmed", "reservation": get_reservation(reservation_id)})
 
 
