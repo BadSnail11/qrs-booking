@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { AdminHeader } from "@/components/admin/admin-header"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { TablesGrid } from "@/components/admin/tables-grid"
-import { BookingModal } from "@/components/admin/booking-modal"
 import { EditBookingModal } from "@/components/admin/edit-booking-modal"
 import { BlockTableModal } from "@/components/admin/block-table-modal"
 import { AnalyticsModal } from "@/components/admin/analytics-modal"
@@ -67,7 +66,6 @@ export default function AdminPage() {
   const [reservationViewMode, setReservationViewMode] = useState<"queue" | "confirmed">("queue")
   
   // Modal states
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false)
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false)
@@ -187,9 +185,12 @@ export default function AdminPage() {
     setIsEditModalOpen(false)
   }
 
-  const handleCreateBooking = (newBooking: Booking) => {
-    setBookings((prev) => [...prev, newBooking as Booking])
-    setIsCreateModalOpen(false)
+  const openCreateBookingPage = () => {
+    const params = new URLSearchParams({
+      date: dateStr,
+      view: reservationViewMode,
+    })
+    router.push(`/admin/reservations/new?${params.toString()}`)
   }
 
   return (
@@ -249,7 +250,7 @@ export default function AdminPage() {
             onViewModeChange={setReservationViewMode}
             tables={tables}
             onCreateBooking={() => {
-              setIsCreateModalOpen(true)
+              openCreateBookingPage()
               setShowSidebar(false)
             }}
             onEditBooking={(booking) => {
@@ -345,21 +346,12 @@ export default function AdminPage() {
 
       {/* Mobile FAB */}
       <Button
-        onClick={() => setIsCreateModalOpen(true)}
+        onClick={openCreateBookingPage}
         className="fixed bottom-6 right-6 z-20 h-14 w-14 rounded-full bg-lime-400 shadow-lg hover:bg-lime-500 lg:hidden"
         size="icon"
       >
         <Plus className="h-6 w-6 text-foreground" />
       </Button>
-
-      <BookingModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onSave={handleCreateBooking}
-        tables={tables}
-        schedule={schedule}
-        existingBookings={bookings.filter((booking) => booking.date === dateStr)}
-      />
 
       <EditBookingModal
         isOpen={isEditModalOpen}
