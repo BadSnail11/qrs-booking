@@ -272,7 +272,7 @@ export function BookingForm() {
             </Label>
             <div className="relative">
               <Phone className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
-              <Input id="phone" type="tel" placeholder="+7 (999) 123-45-67" value={formData.phone} onChange={(e) => handleInputChange("phone", e.target.value)} required className="h-12 rounded-xl border-border bg-background pl-11 text-base placeholder:text-muted-foreground/50" />
+              <Input id="phone" type="tel" placeholder="+375 (999) 123-45-67" value={formData.phone} onChange={(e) => handleInputChange("phone", e.target.value)} required className="h-12 rounded-xl border-border bg-background pl-11 text-base placeholder:text-muted-foreground/50" />
             </div>
           </div>
 

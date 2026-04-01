@@ -21,7 +21,7 @@ export default function BookingPage() {
       <main className="flex-1 px-5">
         {/* Menu Link - stylish card */}
         <a
-          href="/menu.pdf"
+          href="/h5dte67zhkl4jnhcgyoch3srzhjjt5ty.pdf"
           target="_blank"
           rel="noopener noreferrer"
           className="group mb-8 flex items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm transition-all active:scale-[0.98]"
@@ -53,17 +53,19 @@ export default function BookingPage() {
           <div className="space-y-3">
             <div className="flex items-start justify-between">
               <span className="text-sm opacity-70">Адрес</span>
-              <span className="text-right text-sm font-medium">ул. Пушкина, 10</span>
+              <span className="text-right text-sm font-medium">ул. Карла Маркса, 24</span>
             </div>
             <div className="flex items-start justify-between">
               <span className="text-sm opacity-70">Телефон</span>
-              <a href="tel:+74951234567" className="text-sm font-medium underline underline-offset-2">
-                +7 495 123-45-67
+              <a href="tel:+375447625546" className="text-sm font-medium underline underline-offset-2">
+                +375 44 762-55-46
               </a>
             </div>
             <div className="flex items-start justify-between">
               <span className="text-sm opacity-70">Часы работы</span>
-              <span className="text-right text-sm font-medium">12:00 — 23:00</span>
+              <span className="text-right text-sm font-medium whitespace-pre-line">
+                {"пн-чт 18:00-2:00\nпт 18:00-6:00\nсб 14:00-6:00\nвс 14:00-2:00"}
+              </span>
             </div>
           </div>
         </div>
