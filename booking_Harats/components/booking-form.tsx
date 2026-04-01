@@ -17,10 +17,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
-import { CalendarIcon, Check, Users, User, Phone, UtensilsCrossed, Timer, Mail } from "lucide-react"
+import { CalendarIcon, Check, Users, User, Phone, UtensilsCrossed, Timer, Mail, AlertTriangle } from "lucide-react"
 import { userApi } from "@/lib/api"
 
 const guestOptions = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
@@ -66,6 +76,7 @@ export function BookingForm() {
   const [date, setDate] = useState<Date>()
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [showManualConfirmation, setShowManualConfirmation] = useState(false)
   const [availableSlots, setAvailableSlots] = useState<AvailabilitySlot[]>([])
   const [availabilitySchedule, setAvailabilitySchedule] = useState<AvailabilitySchedule | null>(null)
   const [reservationDetails, setReservationDetails] = useState<ReservationDetails | null>(null)
@@ -95,6 +106,10 @@ export function BookingForm() {
   const manualSlots = useMemo(
     () => availableSlots.filter((slot) => slot.confirmation_mode === "manual"),
     [availableSlots]
+  )
+  const selectedSlot = useMemo(
+    () => availableSlots.find((slot) => slot.time === formData.time) || null,
+    [availableSlots, formData.time]
   )
 
   useEffect(() => {
@@ -145,8 +160,7 @@ export function BookingForm() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const submitReservation = async () => {
     setSubmitError("")
     setIsLoading(true)
     try {
@@ -164,6 +178,7 @@ export function BookingForm() {
       const reservation = result.reservation as ReservationDetails
       setReservationDetails(reservation)
       setIsSubmitted(true)
+      setShowManualConfirmation(false)
       if (typeof window !== "undefined") {
         window.localStorage.removeItem(USER_BOOKING_DRAFT_KEY)
       }
@@ -184,6 +199,15 @@ export function BookingForm() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (selectedSlot?.confirmation_mode === "manual") {
+      setShowManualConfirmation(true)
+      return
+    }
+    await submitReservation()
   }
 
   if (isSubmitted) {
@@ -218,8 +242,9 @@ export function BookingForm() {
   }
 
   return (
-    <div className="rounded-3xl border border-border bg-card p-6">
-      <form onSubmit={handleSubmit} className="space-y-6">
+    <>
+      <div className="rounded-3xl border border-border bg-card p-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
             <User className="h-3.5 w-3.5" />
@@ -444,21 +469,43 @@ export function BookingForm() {
         </div>
         {submitError && <p className="text-sm text-destructive">{submitError}</p>}
 
-        <Button
-          type="submit"
-          disabled={isLoading}
-          className="h-14 w-full rounded-2xl bg-primary text-base font-medium text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:shadow-xl hover:shadow-primary/30 active:scale-[0.98] disabled:opacity-70"
-        >
-          {isLoading ? (
-            <span className="flex items-center gap-2">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-              Бронируем...
-            </span>
-          ) : (
-            "Забронировать"
-          )}
-        </Button>
-      </form>
-    </div>
+          <Button
+            type="submit"
+            disabled={isLoading}
+            className="h-14 w-full rounded-2xl bg-primary text-base font-medium text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:shadow-xl hover:shadow-primary/30 active:scale-[0.98] disabled:opacity-70"
+          >
+            {isLoading ? (
+              <span className="flex items-center gap-2">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                Бронируем...
+              </span>
+            ) : (
+              "Забронировать"
+            )}
+          </Button>
+        </form>
+      </div>
+
+      <AlertDialog open={showManualConfirmation} onOpenChange={setShowManualConfirmation}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Подтверждение бронирования
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы выбрали время, которое требует ручного подтверждения. Нет гарантии, что бронирование будет принято.
+              Вы уверены, что хотите отправить заявку на это время?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Назад</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void submitReservation()}>
+              Да, отправить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
