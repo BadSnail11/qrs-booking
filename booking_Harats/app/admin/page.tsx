@@ -46,7 +46,6 @@ export type Table = {
 }
 
 type ListStatusFilter = "all" | "pending" | "confirmed" | "cancelled"
-type ListTimeFilter = "all" | "day" | "evening" | "night"
 
 function getTableSortNumber(name: string) {
   const match = name.match(/(\d+)/)
@@ -62,14 +61,6 @@ function compareTableNames(a: Table, b: Table) {
 
 function compareBookingsByDateTime(a: Booking, b: Booking) {
   return `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`)
-}
-
-function matchesTimeFilter(booking: Booking, filter: ListTimeFilter) {
-  if (filter === "all") return true
-  const hour = parseInt(booking.time.split(":")[0], 10)
-  if (filter === "day") return hour >= 6 && hour < 18
-  if (filter === "evening") return hour >= 18 && hour <= 23
-  return hour >= 0 && hour < 6
 }
 
 function getReservationColorIndexClass(status: Booking["status"]) {
@@ -89,7 +80,6 @@ export default function AdminPage() {
   const [showSidebar, setShowSidebar] = useState(false)
   const [reservationViewMode, setReservationViewMode] = useState<"queue" | "confirmed">("queue")
   const [listStatusFilter, setListStatusFilter] = useState<ListStatusFilter>("all")
-  const [listTimeFilter, setListTimeFilter] = useState<ListTimeFilter>("all")
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false)
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
 
@@ -194,9 +184,8 @@ export default function AdminPage() {
     () =>
       selectedDateBookings
         .filter((booking) => listStatusFilter === "all" || booking.status === listStatusFilter)
-        .filter((booking) => matchesTimeFilter(booking, listTimeFilter))
         .sort(compareBookingsByDateTime),
-    [selectedDateBookings, listStatusFilter, listTimeFilter]
+    [selectedDateBookings, listStatusFilter]
   )
 
   const getTableLabel = (booking: Booking) => {
@@ -274,18 +263,6 @@ export default function AdminPage() {
                     <SelectItem value="pending">Ожидают</SelectItem>
                     <SelectItem value="confirmed">Подтвержденные</SelectItem>
                     <SelectItem value="cancelled">Отменённые</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select value={listTimeFilter} onValueChange={(value) => setListTimeFilter(value as ListTimeFilter)}>
-                  <SelectTrigger className="h-9 w-full rounded-xl bg-background sm:w-[210px]">
-                    <SelectValue placeholder="Период времени" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Все периоды</SelectItem>
-                    <SelectItem value="day">День 06:00-17:59</SelectItem>
-                    <SelectItem value="evening">Вечер 18:00-23:59</SelectItem>
-                    <SelectItem value="night">Ночь 00:00-05:59</SelectItem>
                   </SelectContent>
                 </Select>
               </>
