@@ -16,6 +16,8 @@ interface AdminSidebarProps {
   onEditBooking: (booking: Booking) => void
   onClose?: () => void
   pendingOnly?: boolean
+  /** When true, show booking.date on each card (e.g. when admin cleared day selection) */
+  showBookingDate?: boolean
 }
 
 export function AdminSidebar({
@@ -29,6 +31,7 @@ export function AdminSidebar({
   onEditBooking,
   onClose,
   pendingOnly = false,
+  showBookingDate = false,
 }: AdminSidebarProps) {
   const getTableLabel = (booking: Booking) => {
     if (booking.table_ids && booking.table_ids.length > 1) {
@@ -122,6 +125,7 @@ export function AdminSidebar({
                           <ReservationStatusBadge status={booking.status} />
                         </div>
                         <div className="text-sm text-muted-foreground">
+                          {showBookingDate && <span className="font-medium text-foreground/80">{booking.date} · </span>}
                           {booking.time}-{booking.endTime}
                         </div>
                         {getTableLabel(booking) && (
@@ -166,6 +170,7 @@ export function AdminSidebar({
                             <ReservationStatusBadge status={booking.status} />
                           </div>
                           <div className="text-sm text-muted-foreground">
+                            {showBookingDate && <span className="font-medium text-foreground/80">{booking.date} · </span>}
                             {booking.time}-{booking.endTime}
                           </div>
                           {getTableLabel(booking) && (
@@ -200,6 +205,7 @@ export function AdminSidebar({
                       <ReservationStatusBadge status={booking.status} />
                     </div>
                     <div className="text-sm text-muted-foreground">
+                      {showBookingDate && <span className="font-medium text-foreground/80">{booking.date} · </span>}
                       {booking.time}-{booking.endTime}
                     </div>
                     {getTableLabel(booking) && (

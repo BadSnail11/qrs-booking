@@ -73,7 +73,7 @@ export default function AdminPage() {
   const router = useRouter()
   /** Center of the 7-day strip; when no explicit day is selected, tables/sidebar/grid use this day */
   const [weekAnchor, setWeekAnchor] = useState(() => new Date())
-  /** Null = list shows all reservations; grid/sidebar still follow weekAnchor */
+  /** Null = list + sidebar queues show all reservations; grid/tables still use weekAnchor day */
   const [selectedDate, setSelectedDate] = useState<Date | null>(() => new Date())
   const [searchQuery, setSearchQuery] = useState("")
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -170,16 +170,27 @@ export default function AdminPage() {
     [searchableBookings, dateStr]
   )
 
-  const pendingBookings = useMemo(
-    () => selectedDateBookings.filter((booking) => booking.status === "pending"),
-    [selectedDateBookings]
+  /** Sidebar (pending / cancelled / mobile confirmed): all dates when no day selected, else selected day only */
+  const sidebarScopeBookings = useMemo(
+    () => (selectedDate === null ? searchableBookings : selectedDateBookings),
+    [selectedDate, searchableBookings, selectedDateBookings]
   )
 
-  const cancelledBookings = useMemo(
-    () => selectedDateBookings.filter((booking) => booking.status === "cancelled"),
-    [selectedDateBookings]
-  )
+  const pendingBookings = useMemo(() => {
+    const list = sidebarScopeBookings.filter((booking) => booking.status === "pending")
+    return selectedDate === null
+      ? [...list].sort(compareBookingsByDateTime)
+      : [...list].sort((a, b) => a.time.localeCompare(b.time))
+  }, [sidebarScopeBookings, selectedDate])
 
+  const cancelledBookings = useMemo(() => {
+    const list = sidebarScopeBookings.filter((booking) => booking.status === "cancelled")
+    return selectedDate === null
+      ? [...list].sort(compareBookingsByDateTime)
+      : [...list].sort((a, b) => a.time.localeCompare(b.time))
+  }, [sidebarScopeBookings, selectedDate])
+
+  /** Grid view + header count: always the anchor/selected calendar day */
   const confirmedBookings = useMemo(
     () =>
       selectedDateBookings
@@ -187,6 +198,13 @@ export default function AdminPage() {
         .sort((a, b) => a.time.localeCompare(b.time)),
     [selectedDateBookings]
   )
+
+  const sidebarConfirmedBookings = useMemo(() => {
+    const list = sidebarScopeBookings.filter((booking) => booking.status === "confirmed")
+    return selectedDate === null
+      ? [...list].sort(compareBookingsByDateTime)
+      : [...list].sort((a, b) => a.time.localeCompare(b.time))
+  }, [sidebarScopeBookings, selectedDate])
 
   const listBookings = useMemo(() => {
     const source =
@@ -328,11 +346,12 @@ export default function AdminPage() {
         >
           <AdminSidebar
             pendingBookings={pendingBookings}
-            confirmedBookings={reservationViewMode === "confirmed" ? confirmedBookings : []}
+            confirmedBookings={reservationViewMode === "confirmed" ? sidebarConfirmedBookings : []}
             cancelledBookings={cancelledBookings}
             viewMode={reservationViewMode}
             onViewModeChange={setReservationViewMode}
             tables={sortedTables}
+            showBookingDate={selectedDate === null}
             onCreateBooking={() => {
               openCreateBookingPage()
               setShowSidebar(false)
@@ -354,6 +373,7 @@ export default function AdminPage() {
             onViewModeChange={() => undefined}
             tables={sortedTables}
             pendingOnly
+            showBookingDate={selectedDate === null}
             onCreateBooking={openCreateBookingPage}
             onEditBooking={handleEditBooking}
           />
@@ -377,8 +397,8 @@ export default function AdminPage() {
             <div className="space-y-2">
               {selectedDate === null && (
                 <p className="rounded-lg border border-dashed border-primary/30 bg-primary/5 px-3 py-2 text-sm text-muted-foreground">
-                  Дата не выбрана — в списке показаны все бронирования. Выберите день в полоске или в
-                  календаре, чтобы фильтровать по дню.
+                  Дата не выбрана — в списке и в боковой панели (заявки и отмены) показаны все
+                  бронирования. Выберите день в полоске или в календаре, чтобы фильтровать по дню.
                 </p>
               )}
               {listBookings.length === 0 ? (
