@@ -4,6 +4,7 @@ from flask_cors import CORS
 from booking_service import (
     admin_confirm_reservation,
     analytics_to_csv,
+    clients_database_to_xlsx,
     delete_cancelled_reservation,
     build_customer_name,
     cancel_reservation,
@@ -442,6 +443,16 @@ def reservation_analytics():
             headers={"Content-Disposition": "attachment; filename=reservations-analytics.csv"},
         )
     return jsonify(data)
+
+
+@app.get("/api/v1/analytics/clients.xlsx")
+def clients_database_export():
+    workbook_data = clients_database_to_xlsx()
+    return Response(
+        workbook_data,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=clients-database.xlsx"},
+    )
 
 
 @app.get("/api/v1/reservations/successful")

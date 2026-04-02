@@ -7,6 +7,7 @@ import string
 import logging
 from datetime import datetime, time, timedelta
 
+from openpyxl import Workbook
 from db import execute, execute_returning, query_all, query_one
 
 SLOT_MINUTES = int(os.getenv("SLOT_MINUTES", "120"))
@@ -742,3 +743,52 @@ def analytics_to_csv(analytics):
     for key, value in sorted(analytics["by_guests"].items()):
         writer.writerow(["by_guests", key, value])
     return out.getvalue()
+
+
+def clients_database_to_xlsx():
+    rows = query_all(
+        """
+        SELECT
+            phone,
+            customer_name,
+            email,
+            reservation_time
+        FROM reservations
+        WHERE COALESCE(TRIM(phone), '') <> ''
+        ORDER BY phone ASC, reservation_time DESC
+        """
+    )
+
+    clients_by_phone = {}
+    for row in rows:
+        phone = (row.get("phone") or "").strip()
+        if not phone or phone in clients_by_phone:
+            continue
+        first_name, last_name = split_customer_name(row.get("customer_name"))
+        clients_by_phone[phone] = {
+            "first_name": first_name,
+            "last_name": last_name,
+            "phone": phone,
+            "email": (row.get("email") or "").strip(),
+        }
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Clients"
+    sheet.append(["First name", "Last name", "Phone", "Email"])
+
+    for phone in sorted(clients_by_phone):
+        client = clients_by_phone[phone]
+        sheet.append(
+            [
+                client["first_name"],
+                client["last_name"],
+                client["phone"],
+                client["email"],
+            ]
+        )
+
+    output = io.BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output.getvalue()

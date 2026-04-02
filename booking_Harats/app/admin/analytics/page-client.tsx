@@ -186,6 +186,14 @@ export function AdminAnalyticsPageClient() {
           </div>
         )}
 
+        <div className="mb-6 flex justify-end">
+          <Button asChild variant="outline">
+            <a href={adminApi.getClientsDatabaseExport()} download>
+              Экспорт базы клиентов Excel
+            </a>
+          </Button>
+        </div>
+
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <div className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">

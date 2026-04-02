@@ -52,6 +52,9 @@ export const userApi = {
 }
 
 export const adminApi = {
+  getClientsDatabaseExport() {
+    return `${ADMIN_API_URL}/v1/analytics/clients.xlsx`
+  },
   getTelegramRecipients() {
     return request<Array<Record<string, unknown>>>(ADMIN_API_URL, "/v1/settings/telegram-recipients")
   },
