@@ -402,12 +402,6 @@ export function AdminEditReservationPageClient({
                 <div className="text-sm text-muted-foreground">Загрузка бронирования...</div>
               ) : (
                 <>
-                  {booking.table_ids && booking.table_ids.length > 0 && (
-                    <div className="mb-4 rounded-lg bg-muted p-3 text-sm">
-                      Назначенные столы: {booking.table_ids.join(" + ")}
-                    </div>
-                  )}
-
                   <div className="space-y-6">
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div className="space-y-2">
