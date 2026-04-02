@@ -532,7 +532,7 @@ def get_slots_for_day(date_value, guests):
     return {"schedule": schedule, "slots": slots}
 
 
-def update_reservation(reservation_id, updates, force=False):
+def update_reservation(reservation_id, updates, force=False, allow_insufficient_capacity=False):
     current = get_reservation(reservation_id)
     if not current:
         return None
@@ -565,12 +565,11 @@ def update_reservation(reservation_id, updates, force=False):
     issues = validate_table_selection(
         new_table_ids, new_guests, new_time, exclude_reservation_id=int(reservation_id)
     )
-    if (
-        issues["capacity_issue"]
-        or issues["unite_issue"]
-        or issues["conflict"]
-        or issues["block"]
-    ) and not force:
+    if force:
+        pass
+    elif issues["unite_issue"] or issues["conflict"] or issues["block"]:
+        raise ValueError("Update requires force=true due to capacity/conflict constraints")
+    elif issues["capacity_issue"] and not allow_insufficient_capacity:
         raise ValueError("Update requires force=true due to capacity/conflict constraints")
 
     execute(

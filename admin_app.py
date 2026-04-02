@@ -333,7 +333,10 @@ def edit_reservation(reservation_id):
 
     try:
         updated = update_reservation(
-            reservation_id, body, force=bool(body.get("force", False))
+            reservation_id,
+            body,
+            force=bool(body.get("force", False)),
+            allow_insufficient_capacity=True,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
