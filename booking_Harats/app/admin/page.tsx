@@ -191,11 +191,11 @@ export default function AdminPage() {
 
   const listBookings = useMemo(
     () =>
-      searchableBookings
+      selectedDateBookings
         .filter((booking) => listStatusFilter === "all" || booking.status === listStatusFilter)
         .filter((booking) => matchesTimeFilter(booking, listTimeFilter))
         .sort(compareBookingsByDateTime),
-    [searchableBookings, listStatusFilter, listTimeFilter]
+    [selectedDateBookings, listStatusFilter, listTimeFilter]
   )
 
   const getTableLabel = (booking: Booking) => {
