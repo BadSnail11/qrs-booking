@@ -6,7 +6,6 @@ import { AdminHeader } from "@/components/admin/admin-header"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { TablesGrid } from "@/components/admin/tables-grid"
 import { BlockTableModal } from "@/components/admin/block-table-modal"
-import { AnalyticsModal } from "@/components/admin/analytics-modal"
 import { Button } from "@/components/ui/button"
 import { Plus, List, Grid3X3 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -66,7 +65,6 @@ export default function AdminPage() {
   
   // Modal states
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false)
-  const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false)
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
 
   const dateStr = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate])
@@ -169,7 +167,7 @@ export default function AdminPage() {
         onSearchChange={setSearchQuery}
         selectedDate={selectedDate}
         onDateChange={setSelectedDate}
-        onAnalyticsClick={() => setIsAnalyticsModalOpen(true)}
+        onAnalyticsClick={() => router.push("/admin/analytics")}
         onSettingsClick={() => router.push("/admin/settings")}
         pendingCount={pendingBookings.length}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
@@ -327,12 +325,6 @@ export default function AdminPage() {
         }}
         table={selectedTable}
         onSuccess={() => void loadData()}
-      />
-
-      <AnalyticsModal
-        isOpen={isAnalyticsModalOpen}
-        onClose={() => setIsAnalyticsModalOpen(false)}
-        bookings={bookings}
       />
     </div>
   )
