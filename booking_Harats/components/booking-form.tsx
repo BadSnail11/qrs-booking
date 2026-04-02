@@ -252,6 +252,29 @@ export function BookingForm() {
     return e
   }
 
+  /** Show red border + message under field on blur when value is invalid. */
+  const handleFieldBlur = (field: "firstName" | "lastName" | "phone" | "email") => {
+    setFieldErrors((prev) => {
+      const next = { ...prev }
+      if (field === "firstName") {
+        if (!formData.firstName.trim()) next.firstName = "Введите имя."
+        else delete next.firstName
+      } else if (field === "lastName") {
+        if (!formData.lastName.trim()) next.lastName = "Введите фамилию."
+        else delete next.lastName
+      } else if (field === "phone") {
+        const err = getPhoneError(formData.phone)
+        if (err) next.phone = err
+        else delete next.phone
+      } else {
+        const err = getEmailError(formData.email)
+        if (err) next.email = err
+        else delete next.email
+      }
+      return next
+    })
+  }
+
   const loadAvailability = async (nextDate: Date | undefined, guests: string) => {
     if (!nextDate || !guests) {
       setAvailableSlots([])
@@ -466,11 +489,12 @@ export function BookingForm() {
                 placeholder="Иван"
                 value={formData.firstName}
                 onChange={(e) => handleInputChange("firstName", e.target.value)}
+                onBlur={() => handleFieldBlur("firstName")}
                 autoComplete="given-name"
                 aria-invalid={Boolean(fieldErrors.firstName)}
                 className={cn(
-                  "h-12 rounded-xl border-border bg-background text-base placeholder:text-muted-foreground/50",
-                  fieldErrors.firstName && "border-destructive"
+                  "h-12 rounded-xl border bg-background text-base placeholder:text-muted-foreground/50",
+                  fieldErrors.firstName ? "border-destructive ring-1 ring-destructive/40" : "border-border"
                 )}
               />
               {fieldErrors.firstName && <p className="text-xs text-destructive">{fieldErrors.firstName}</p>}
@@ -484,11 +508,12 @@ export function BookingForm() {
                 placeholder="Иванов"
                 value={formData.lastName}
                 onChange={(e) => handleInputChange("lastName", e.target.value)}
+                onBlur={() => handleFieldBlur("lastName")}
                 autoComplete="family-name"
                 aria-invalid={Boolean(fieldErrors.lastName)}
                 className={cn(
-                  "h-12 rounded-xl border-border bg-background text-base placeholder:text-muted-foreground/50",
-                  fieldErrors.lastName && "border-destructive"
+                  "h-12 rounded-xl border bg-background text-base placeholder:text-muted-foreground/50",
+                  fieldErrors.lastName ? "border-destructive ring-1 ring-destructive/40" : "border-border"
                 )}
               />
               {fieldErrors.lastName && <p className="text-xs text-destructive">{fieldErrors.lastName}</p>}
@@ -508,11 +533,12 @@ export function BookingForm() {
                 placeholder="+375 (999) 123-45-67"
                 value={formData.phone}
                 onChange={(e) => handleInputChange("phone", e.target.value)}
+                onBlur={() => handleFieldBlur("phone")}
                 autoComplete="tel"
                 aria-invalid={Boolean(fieldErrors.phone)}
                 className={cn(
-                  "h-12 rounded-xl border-border bg-background pl-11 text-base placeholder:text-muted-foreground/50",
-                  fieldErrors.phone && "border-destructive"
+                  "h-12 rounded-xl border bg-background pl-11 text-base placeholder:text-muted-foreground/50",
+                  fieldErrors.phone ? "border-destructive ring-1 ring-destructive/40" : "border-border"
                 )}
               />
             </div>
@@ -532,11 +558,12 @@ export function BookingForm() {
                 placeholder="ivan@example.com"
                 value={formData.email}
                 onChange={(e) => handleInputChange("email", e.target.value)}
+                onBlur={() => handleFieldBlur("email")}
                 autoComplete="email"
                 aria-invalid={Boolean(fieldErrors.email)}
                 className={cn(
-                  "h-12 rounded-xl border-border bg-background pl-11 text-base placeholder:text-muted-foreground/50",
-                  fieldErrors.email && "border-destructive"
+                  "h-12 rounded-xl border bg-background pl-11 text-base placeholder:text-muted-foreground/50",
+                  fieldErrors.email ? "border-destructive ring-1 ring-destructive/40" : "border-border"
                 )}
               />
             </div>
@@ -567,8 +594,8 @@ export function BookingForm() {
               >
                 <SelectTrigger
                   className={cn(
-                    "h-12 rounded-xl border-border bg-background text-base",
-                    fieldErrors.guests && "border-destructive"
+                    "h-12 rounded-xl border bg-background text-base",
+                    fieldErrors.guests ? "border-destructive ring-1 ring-destructive/40" : "border-border"
                   )}
                   aria-invalid={Boolean(fieldErrors.guests)}
                 >
@@ -601,8 +628,8 @@ export function BookingForm() {
               >
                 <SelectTrigger
                   className={cn(
-                    "h-12 rounded-xl border-border bg-background text-base",
-                    fieldErrors.set && "border-destructive"
+                    "h-12 rounded-xl border bg-background text-base",
+                    fieldErrors.set ? "border-destructive ring-1 ring-destructive/40" : "border-border"
                   )}
                   aria-invalid={Boolean(fieldErrors.set)}
                 >
@@ -630,11 +657,14 @@ export function BookingForm() {
             <Popover>
               <PopoverTrigger asChild>
                 <Button
+                  type="button"
                   variant="outline"
                   className={cn(
-                    "h-12 w-full justify-start rounded-xl border-border bg-background text-base font-normal",
-                    !date && "text-muted-foreground/50"
+                    "h-12 w-full justify-start rounded-xl border bg-background text-base font-normal",
+                    !date && "text-muted-foreground/50",
+                    fieldErrors.date ? "border-destructive ring-1 ring-destructive/40" : "border-border"
                   )}
+                  aria-invalid={Boolean(fieldErrors.date)}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground/50" />
                   {date ? format(date, "d MMMM, EEEE", { locale: ru }) : "Выберите дату"}
@@ -670,18 +700,33 @@ export function BookingForm() {
               </span>
             </div>
             {!isReadyForTimeSelection ? (
-              <div className="rounded-xl border border-dashed border-border bg-background px-4 py-3 text-sm text-muted-foreground">
+              <div
+                className={cn(
+                  "rounded-xl border border-dashed bg-background px-4 py-3 text-sm text-muted-foreground",
+                  fieldErrors.time ? "border-destructive ring-1 ring-destructive/40" : "border-border"
+                )}
+              >
                 Заполните все поля выше (имя, фамилия, телефон, email, гости, сеты и дату), чтобы увидеть доступное время.
               </div>
             ) : isAvailabilityLoading ? (
-              <div className="rounded-xl border border-border bg-background px-4 py-6 text-sm text-muted-foreground">
+              <div
+                className={cn(
+                  "rounded-xl border bg-background px-4 py-6 text-sm text-muted-foreground",
+                  fieldErrors.time ? "border-destructive ring-1 ring-destructive/40" : "border-border"
+                )}
+              >
                 <span className="flex items-center gap-2">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                   Загружаем доступное время...
                 </span>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div
+                className={cn(
+                  "space-y-4 rounded-xl border p-3",
+                  fieldErrors.time ? "border-destructive ring-1 ring-destructive/40" : "border-transparent"
+                )}
+              >
                 <div className="space-y-2">
                   <div className="text-xs font-medium text-emerald-700">
                     Подтверждаются автоматически
