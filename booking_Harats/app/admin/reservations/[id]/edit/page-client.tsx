@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
-import { ArrowLeft, CalendarIcon, Phone as PhoneIcon } from "lucide-react"
-import type { Booking } from "@/app/admin/page"
+import { ArrowLeft, CalendarIcon, Phone as PhoneIcon, AlertTriangle, Users, X, Check } from "lucide-react"
+import type { Booking, Table } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,6 +25,13 @@ const timeSlots = [
   "20:00", "20:30", "21:00", "21:30", "22:00",
 ]
 
+type TableOption = {
+  key: string
+  label: string
+  tableIds: number[]
+  capacity: number
+}
+
 export function AdminEditReservationPageClient({
   reservationId,
   initialDate,
@@ -35,8 +42,13 @@ export function AdminEditReservationPageClient({
   initialView: "queue" | "confirmed"
 }) {
   const [booking, setBooking] = useState<Booking | null>(null)
+  const [tables, setTables] = useState<Table[]>([])
+  const [existingBookings, setExistingBookings] = useState<Booking[]>([])
   const [date, setDate] = useState<Date>()
   const [showConfirmation, setShowConfirmation] = useState(false)
+  const [showWarning, setShowWarning] = useState(false)
+  const [warningMessage, setWarningMessage] = useState("")
+  const [conflictingBooking, setConflictingBooking] = useState<Booking | null>(null)
   const [submitError, setSubmitError] = useState("")
   const [pageError, setPageError] = useState("")
   const [isLoading, setIsLoading] = useState(true)
@@ -48,8 +60,10 @@ export function AdminEditReservationPageClient({
     guests: "",
     sets: "",
     time: "",
+    tableOptionKey: "",
     note: "",
   })
+  const dateValue = useMemo(() => (date ? format(date, "yyyy-MM-dd") : ""), [date])
 
   const backHref = useMemo(() => {
     const params = new URLSearchParams()
@@ -64,12 +78,17 @@ export function AdminEditReservationPageClient({
       setPageError("")
       try {
         const targetDate = initialDate || format(new Date(), "yyyy-MM-dd")
-        const bookings = await adminApi.getReservations(targetDate)
+        const [bookings, tablesData] = await Promise.all([
+          adminApi.getReservations(targetDate),
+          adminApi.getTables(targetDate),
+        ])
         const matched = (bookings as Booking[]).find((item) => item.id === reservationId)
         if (!matched) {
           setPageError("Бронирование не найдено")
           return
         }
+        setExistingBookings(bookings as Booking[])
+        setTables(tablesData as Table[])
         setBooking(matched)
         setFormData({
           firstName: matched.firstName,
@@ -79,6 +98,10 @@ export function AdminEditReservationPageClient({
           guests: String(matched.guests),
           sets: String(matched.sets),
           time: matched.time,
+          tableOptionKey:
+            matched.table_ids && matched.table_ids.length > 1
+              ? `pair-${[...matched.table_ids].sort((a, b) => a - b).join("-")}`
+              : `single-${matched.tableId}`,
           note: matched.note || "",
         })
         setDate(new Date(`${matched.date}T00:00:00`))
@@ -92,11 +115,164 @@ export function AdminEditReservationPageClient({
     void loadReservation()
   }, [initialDate, reservationId])
 
+  useEffect(() => {
+    const loadDayData = async () => {
+      if (!dateValue) return
+      try {
+        const [bookings, tablesData] = await Promise.all([
+          adminApi.getReservations(dateValue),
+          adminApi.getTables(dateValue),
+        ])
+        setExistingBookings(bookings as Booking[])
+        setTables(tablesData as Table[])
+      } catch {
+        // noop
+      }
+    }
+
+    if (!booking || !dateValue) return
+    void loadDayData()
+  }, [booking, dateValue])
+
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
+  const activeTables = useMemo(
+    () => tables.filter((table) => table.isActive !== false),
+    [tables]
+  )
+
+  const tableOptions = useMemo<TableOption[]>(() => {
+    const singles: TableOption[] = activeTables.map((table) => ({
+      key: `single-${table.id}`,
+      label: table.name,
+      tableIds: [table.id],
+      capacity: table.maxCapacity,
+    }))
+
+    const seenPairs = new Set<string>()
+    const pairs: TableOption[] = []
+    activeTables.forEach((table) => {
+      if (!table.canUnite || !table.uniteWithTableId) return
+      const partner = activeTables.find((candidate) => candidate.id === table.uniteWithTableId)
+      if (!partner) return
+      const pairIds = [table.id, partner.id].sort((a, b) => a - b)
+      const pairKey = `pair-${pairIds.join("-")}`
+      if (seenPairs.has(pairKey)) return
+      seenPairs.add(pairKey)
+      pairs.push({
+        key: pairKey,
+        label: `${table.name} + ${partner.name}`,
+        tableIds: pairIds,
+        capacity: table.maxCapacity + partner.maxCapacity,
+      })
+    })
+
+    return [...singles, ...pairs]
+  }, [activeTables])
+
+  const selectedOption = tableOptions.find((option) => option.key === formData.tableOptionKey)
+
+  const getEndTime = (startTime: string): string => {
+    const [hours, minutes] = startTime.split(":").map(Number)
+    const endHours = hours + 2
+    return `${String(endHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`
+  }
+
+  const checkTableAvailability = async (tableIds: number[], optionLabel: string) => {
+    if (!date || !formData.time || !formData.guests) return null
+
+    const result = await adminApi.checkTable({
+      table_ids: tableIds,
+      guests: parseInt(formData.guests, 10),
+      date: dateValue,
+      time: formData.time,
+      reservation_id: booking?.id,
+    }) as {
+      ok: boolean
+      capacity_issue: boolean
+      conflict: { customer_name: string; phone: string; reservation_time: string } | null
+      block: { start_time: string; end_time: string; reason: string } | null
+      unite_issue?: boolean
+    }
+
+    if (result.capacity_issue) {
+      return { message: `${optionLabel} не подходит по вместимости для ${formData.guests} гостей`, booking: null }
+    }
+
+    if (result.conflict) {
+      const [firstName, ...rest] = result.conflict.customer_name.split(" ")
+      return {
+        message: `${optionLabel} уже занят другой бронью`,
+        booking: {
+          id: "conflict",
+          firstName,
+          lastName: rest.join(" "),
+          phone: result.conflict.phone || "",
+          guests: parseInt(formData.guests, 10),
+          sets: 1,
+          date: dateValue,
+          time: formData.time,
+          endTime: getEndTime(formData.time),
+          tableId: tableIds[0],
+          status: "confirmed",
+          color: "bg-red-100 border-l-red-400",
+        } as Booking,
+      }
+    }
+
+    if (result.block) {
+      return { message: `${optionLabel} заблокирован: ${result.block.reason || "без причины"}`, booking: null }
+    }
+
+    if (result.unite_issue) {
+      return { message: `${optionLabel} не может быть объединен по текущим правилам`, booking: null }
+    }
+
+    return null
+  }
+
+  const handleTableSelect = async (optionKey: string) => {
+    handleInputChange("tableOptionKey", optionKey)
+    const option = tableOptions.find((item) => item.key === optionKey)
+    if (!option) return
+    if (formData.time && formData.guests && date) {
+      const issue = await checkTableAvailability(option.tableIds, option.label)
+      if (issue) {
+        setWarningMessage(issue.message)
+        setConflictingBooking(issue.booking)
+        setShowWarning(true)
+      }
+    }
+  }
+
+  const getOptionStatus = (option: TableOption) => {
+    if (!formData.time || !formData.guests || !date) return "available"
+
+    const guests = parseInt(formData.guests, 10)
+    if (guests > option.capacity) return "capacity-issue"
+
+    const conflict = existingBookings.find((item) => {
+      if (item.id === booking?.id || item.status === "cancelled" || item.date !== dateValue) return false
+      const bookingTableIds = item.table_ids && item.table_ids.length > 0 ? item.table_ids : [item.tableId]
+      if (!bookingTableIds.some((id) => option.tableIds.includes(id))) return false
+      const bookingStart = item.time
+      const bookingEnd = item.endTime
+      const newStart = formData.time
+      const newEnd = getEndTime(formData.time)
+      return newStart < bookingEnd && newEnd > bookingStart
+    })
+
+    if (conflict) return "booked"
+    return "available"
+  }
+
   const handleSave = () => {
+    if (!formData.tableOptionKey) {
+      setSubmitError("Выберите стол для бронирования")
+      return
+    }
     setShowConfirmation(true)
   }
 
@@ -115,7 +291,7 @@ export function AdminEditReservationPageClient({
         date: format(date, "yyyy-MM-dd"),
         time: formData.time,
         note: formData.note || undefined,
-        tableId: booking.tableId,
+        table_ids: selectedOption?.tableIds || booking.table_ids || [booking.tableId],
         confirm_call_notice: true,
       }) as Booking
       setBooking(updated)
@@ -235,7 +411,7 @@ export function AdminEditReservationPageClient({
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Гости</Label>
-                        <Select value={formData.guests} onValueChange={(v) => handleInputChange("guests", v)}>
+                        <Select value={formData.guests} onValueChange={(v) => setFormData((prev) => ({ ...prev, guests: v, tableOptionKey: "" }))}>
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
@@ -274,14 +450,22 @@ export function AdminEditReservationPageClient({
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0">
-                          <Calendar mode="single" selected={date} onSelect={setDate} locale={ru} />
+                          <Calendar
+                            mode="single"
+                            selected={date}
+                            onSelect={(value) => {
+                              setDate(value)
+                              setFormData((prev) => ({ ...prev, tableOptionKey: "" }))
+                            }}
+                            locale={ru}
+                          />
                         </PopoverContent>
                       </Popover>
                     </div>
 
                     <div className="space-y-2">
                       <Label>Время</Label>
-                      <Select value={formData.time} onValueChange={(v) => handleInputChange("time", v)}>
+                      <Select value={formData.time} onValueChange={(v) => setFormData((prev) => ({ ...prev, time: v, tableOptionKey: "" }))}>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -291,6 +475,50 @@ export function AdminEditReservationPageClient({
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+
+                    <div className="space-y-4">
+                      <Label>Стол</Label>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {tableOptions.map((option) => {
+                          const status = getOptionStatus(option)
+                          const isSelected = formData.tableOptionKey === option.key
+
+                          return (
+                            <button
+                              key={option.key}
+                              type="button"
+                              onClick={() => void handleTableSelect(option.key)}
+                              className={cn(
+                                "relative rounded-xl border-2 p-4 text-left transition-colors",
+                                isSelected && "border-primary bg-primary/5",
+                                !isSelected && status === "available" && "border-border hover:border-primary/50",
+                                !isSelected && status === "capacity-issue" && "border-orange-300 bg-orange-50",
+                                !isSelected && status === "booked" && "border-red-300 bg-red-50"
+                              )}
+                            >
+                              {isSelected && <Check className="absolute right-3 top-3 h-4 w-4 text-primary" />}
+                              <div className="font-medium">{option.label}</div>
+                              <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                                <Users className="h-3 w-3" />
+                                до {option.capacity}
+                              </div>
+                              {status === "capacity-issue" && (
+                                <div className="mt-2 flex items-center gap-1 text-xs text-orange-600">
+                                  <AlertTriangle className="h-3 w-3" />
+                                  Мало мест
+                                </div>
+                              )}
+                              {status === "booked" && (
+                                <div className="mt-2 flex items-center gap-1 text-xs text-red-600">
+                                  <X className="h-3 w-3" />
+                                  Занят
+                                </div>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
 
                     <div className="space-y-2">
@@ -362,6 +590,32 @@ export function AdminEditReservationPageClient({
             <AlertDialogAction onClick={() => void confirmSave()}>
               ОК, сохранить
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showWarning} onOpenChange={setShowWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
+              Внимание
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {warningMessage}
+              {conflictingBooking && (
+                <div className="mt-2 rounded-lg bg-muted p-3 text-sm">
+                  <div className="font-medium">Существующая бронь:</div>
+                  <div>{conflictingBooking.firstName} {conflictingBooking.lastName}</div>
+                  <div>{conflictingBooking.time} - {conflictingBooking.endTime}</div>
+                  <div>{conflictingBooking.phone}</div>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Закрыть</AlertDialogCancel>
+            <AlertDialogAction>Понятно</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -61,6 +61,7 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
   const [isSavingTables, setIsSavingTables] = useState(false)
   const [isSavingSchedule, setIsSavingSchedule] = useState(false)
   const [isSavingRecipient, setIsSavingRecipient] = useState(false)
+  const [isAddingTable, setIsAddingTable] = useState(false)
   const [newName, setNewName] = useState("")
   const [newCapacity, setNewCapacity] = useState("2")
   const [newCanUnite, setNewCanUnite] = useState(false)
@@ -147,20 +148,37 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
     }))
   }
 
+  const resetNewTableForm = () => {
+    setNewName("")
+    setNewCapacity("2")
+    setNewCanUnite(false)
+    setNewUniteWithTableId("")
+  }
+
+  const handleAddTable = async () => {
+    setTablesError("")
+    setIsAddingTable(true)
+    try {
+      await adminApi.createTable({
+        name: newName,
+        capacity: parseInt(newCapacity, 10),
+        is_active: true,
+        can_unite: newCanUnite,
+        unite_with_table_id: newCanUnite && newUniteWithTableId ? parseInt(newUniteWithTableId, 10) : null,
+      })
+      resetNewTableForm()
+      await loadData()
+    } catch (err) {
+      setTablesError(err instanceof Error ? err.message : "Не удалось добавить стол")
+    } finally {
+      setIsAddingTable(false)
+    }
+  }
+
   const handleSaveTables = async () => {
     setTablesError("")
     setIsSavingTables(true)
     try {
-      if (newName.trim()) {
-        await adminApi.createTable({
-          name: newName,
-          capacity: parseInt(newCapacity, 10),
-          is_active: true,
-          can_unite: newCanUnite,
-          unite_with_table_id: newCanUnite && newUniteWithTableId ? parseInt(newUniteWithTableId, 10) : null,
-        })
-      }
-
       await Promise.all(
         tables.map((table) => {
           const draft = tableDrafts[table.id]
@@ -174,11 +192,6 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
           })
         })
       )
-
-      setNewName("")
-      setNewCapacity("2")
-      setNewCanUnite(false)
-      setNewUniteWithTableId("")
       await loadData()
     } catch (err) {
       setTablesError(err instanceof Error ? err.message : "Не удалось сохранить столы")
@@ -311,7 +324,7 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
             <TabsContent value="tables" className="space-y-6">
               <div className="rounded-xl border border-border bg-card p-4">
                 <div className="mb-4 text-sm font-medium">Добавить стол</div>
-                <div className="grid gap-3 md:grid-cols-[minmax(200px,1fr)_140px_140px_minmax(180px,1fr)]">
+                <div className="grid gap-3 md:grid-cols-[minmax(200px,1fr)_140px_140px_minmax(180px,1fr)_140px]">
                   <div className="space-y-2">
                     <Label>Название</Label>
                     <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Стол 9" />
@@ -347,6 +360,15 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      className="w-full"
+                      onClick={() => void handleAddTable()}
+                      disabled={isAddingTable || !newName.trim() || !newCapacity.trim()}
+                    >
+                      Добавить
+                    </Button>
                   </div>
                 </div>
               </div>
