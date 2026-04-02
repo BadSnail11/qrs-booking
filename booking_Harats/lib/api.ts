@@ -3,6 +3,22 @@
 const USER_API_URL = process.env.NEXT_PUBLIC_USER_API_URL || "/api/user"
 const ADMIN_API_URL = process.env.NEXT_PUBLIC_ADMIN_API_URL || "/api/admin"
 
+function userFriendlyHttpError(response: Response, payload: unknown): string {
+  if (response.status >= 500) {
+    return "Сервис временно недоступен. Попробуйте позже."
+  }
+  if (response.status === 401 || response.status === 403) {
+    return "Доступ запрещён. Обновите страницу и попробуйте снова."
+  }
+  if (typeof payload === "object" && payload && "error" in payload) {
+    return String((payload as { error: string }).error)
+  }
+  if (response.status === 404) {
+    return "Запрашиваемые данные не найдены."
+  }
+  return "Не удалось выполнить запрос. Попробуйте позже."
+}
+
 async function request<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     headers: {
@@ -26,9 +42,28 @@ async function request<T>(baseUrl: string, path: string, init?: RequestInit): Pr
   return payload as T
 }
 
+async function userRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${USER_API_URL}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
+    ...init,
+  })
+
+  const isJson = response.headers.get("content-type")?.includes("application/json")
+  const payload = isJson ? await response.json() : await response.text()
+
+  if (!response.ok) {
+    throw new Error(userFriendlyHttpError(response, payload))
+  }
+
+  return payload as T
+}
+
 export const userApi = {
   getAvailability(date: string, guests: number) {
-    return request<{
+    return userRequest<{
       date: string
       guests: number
       schedule: { weekday: number; dayName: string; isOpen: boolean; openTime: string | null; closeTime: string | null }
@@ -38,13 +73,10 @@ export const userApi = {
         suggested_table_ids: number[]
         confirmation_mode?: "automatic" | "manual" | null
       }>
-    }>(
-      USER_API_URL,
-      `/v1/availability?date=${encodeURIComponent(date)}&guests=${guests}`
-    )
+    }>(`/v1/availability?date=${encodeURIComponent(date)}&guests=${guests}`)
   },
   createReservation(body: Record<string, unknown>) {
-    return request<{ message: string; reservation: Record<string, unknown> }>(USER_API_URL, "/v1/reservations", {
+    return userRequest<{ message: string; reservation: Record<string, unknown> }>("/v1/reservations", {
       method: "POST",
       body: JSON.stringify(body),
     })

@@ -120,6 +120,26 @@ function saveReservationHistory(items: UserBookingHistoryItem[]) {
   )
 }
 
+type FieldKey = "firstName" | "lastName" | "phone" | "email" | "guests" | "set" | "date" | "time"
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+
+function getPhoneError(phone: string): string | null {
+  const trimmed = phone.trim()
+  if (!trimmed) return "Укажите номер телефона."
+  const digits = trimmed.replace(/\D/g, "")
+  if (digits.length < 10) return "Телефон слишком короткий. Нужно не менее 10 цифр."
+  if (digits.length > 15) return "Слишком много цифр в номере."
+  return null
+}
+
+function getEmailError(email: string): string | null {
+  const trimmed = email.trim()
+  if (!trimmed) return "Укажите email."
+  if (!EMAIL_RE.test(trimmed)) return "Введите корректный email (например, name@mail.ru)."
+  return null
+}
+
 export function BookingForm() {
   const [date, setDate] = useState<Date>()
   const [isSubmitted, setIsSubmitted] = useState(false)
@@ -132,6 +152,7 @@ export function BookingForm() {
   const [reservationDetails, setReservationDetails] = useState<ReservationDetails | null>(null)
   const [reservationHistory, setReservationHistory] = useState<UserBookingHistoryItem[]>([])
   const [submitError, setSubmitError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({})
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -143,12 +164,18 @@ export function BookingForm() {
   })
 
   const dateValue = useMemo(() => (date ? format(date, "yyyy-MM-dd") : ""), [date])
-  const isReadyForTimeSelection = Boolean(
-    formData.firstName.trim() &&
-    formData.lastName.trim() &&
-    formData.phone.trim() &&
-    formData.guests &&
-    date
+  const isReadyForTimeSelection = useMemo(
+    () =>
+      Boolean(
+        formData.firstName.trim() &&
+          formData.lastName.trim() &&
+          !getPhoneError(formData.phone) &&
+          !getEmailError(formData.email) &&
+          formData.guests &&
+          formData.set &&
+          date
+      ),
+    [formData.firstName, formData.lastName, formData.phone, formData.email, formData.guests, formData.set, date]
   )
   const automaticSlots = useMemo(
     () => availableSlots.filter((slot) => slot.confirmation_mode === "automatic"),
@@ -192,8 +219,37 @@ export function BookingForm() {
     window.localStorage.setItem(USER_BOOKING_DRAFT_KEY, JSON.stringify(draft))
   }, [date, formData, isSubmitted])
 
-  const handleInputChange = (field: string, value: string) => {
+  const clearFieldError = (field: FieldKey) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
+  }
+
+  const handleInputChange = (field: keyof typeof formData, value: string) => {
+    if (field === "firstName" || field === "lastName" || field === "phone" || field === "email") {
+      clearFieldError(field)
+    }
+    if (field === "set") clearFieldError("set")
+    if (field === "time") clearFieldError("time")
     setFormData((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const validateBookingForm = (): Partial<Record<FieldKey, string>> => {
+    const e: Partial<Record<FieldKey, string>> = {}
+    if (!formData.firstName.trim()) e.firstName = "Введите имя."
+    if (!formData.lastName.trim()) e.lastName = "Введите фамилию."
+    const pe = getPhoneError(formData.phone)
+    if (pe) e.phone = pe
+    const ee = getEmailError(formData.email)
+    if (ee) e.email = ee
+    if (!formData.guests) e.guests = "Выберите количество гостей."
+    if (!formData.set) e.set = "Выберите количество сетов."
+    if (!date) e.date = "Выберите дату."
+    if (!formData.time) e.time = "Выберите время бронирования."
+    return e
   }
 
   const loadAvailability = async (nextDate: Date | undefined, guests: string) => {
@@ -218,15 +274,22 @@ export function BookingForm() {
 
   const submitReservation = async () => {
     setSubmitError("")
+    const errors = validateBookingForm()
+    setFieldErrors(errors)
+    if (Object.keys(errors).length > 0) {
+      setShowManualConfirmation(false)
+      return
+    }
+
     setIsLoading(true)
     try {
       const result = await userApi.createReservation({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        phone: formData.phone,
-        email: formData.email || undefined,
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        phone: formData.phone.trim(),
+        email: formData.email.trim(),
         guests: parseInt(formData.guests, 10),
-        sets: parseInt(formData.set || "1", 10),
+        sets: parseInt(formData.set, 10),
         date: dateValue,
         time: formData.time,
       })
@@ -268,7 +331,11 @@ export function BookingForm() {
       setAvailableSlots([])
       setAvailabilitySchedule(null)
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Не удалось создать бронирование")
+      if (error instanceof TypeError) {
+        setSubmitError("Нет соединения с сервером. Проверьте интернет и попробуйте снова.")
+      } else {
+        setSubmitError(error instanceof Error ? error.message : "Не удалось создать бронирование. Попробуйте позже.")
+      }
     } finally {
       setIsLoading(false)
     }
@@ -276,6 +343,11 @@ export function BookingForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const errors = validateBookingForm()
+    setFieldErrors(errors)
+    if (Object.keys(errors).length > 0) {
+      return
+    }
     if (selectedSlot?.confirmation_mode === "manual") {
       setShowManualConfirmation(true)
       return
@@ -377,7 +449,7 @@ export function BookingForm() {
           )}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form noValidate onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
             <User className="h-3.5 w-3.5" />
@@ -387,39 +459,88 @@ export function BookingForm() {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="firstName" className="text-xs text-muted-foreground">
-                Имя
+                Имя <span className="text-destructive">*</span>
               </Label>
-              <Input id="firstName" placeholder="Иван" value={formData.firstName} onChange={(e) => handleInputChange("firstName", e.target.value)} required className="h-12 rounded-xl border-border bg-background text-base placeholder:text-muted-foreground/50" />
+              <Input
+                id="firstName"
+                placeholder="Иван"
+                value={formData.firstName}
+                onChange={(e) => handleInputChange("firstName", e.target.value)}
+                autoComplete="given-name"
+                aria-invalid={Boolean(fieldErrors.firstName)}
+                className={cn(
+                  "h-12 rounded-xl border-border bg-background text-base placeholder:text-muted-foreground/50",
+                  fieldErrors.firstName && "border-destructive"
+                )}
+              />
+              {fieldErrors.firstName && <p className="text-xs text-destructive">{fieldErrors.firstName}</p>}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="lastName" className="text-xs text-muted-foreground">
-                Фамилия
+                Фамилия <span className="text-destructive">*</span>
               </Label>
-              <Input id="lastName" placeholder="Иванов" value={formData.lastName} onChange={(e) => handleInputChange("lastName", e.target.value)} required className="h-12 rounded-xl border-border bg-background text-base placeholder:text-muted-foreground/50" />
+              <Input
+                id="lastName"
+                placeholder="Иванов"
+                value={formData.lastName}
+                onChange={(e) => handleInputChange("lastName", e.target.value)}
+                autoComplete="family-name"
+                aria-invalid={Boolean(fieldErrors.lastName)}
+                className={cn(
+                  "h-12 rounded-xl border-border bg-background text-base placeholder:text-muted-foreground/50",
+                  fieldErrors.lastName && "border-destructive"
+                )}
+              />
+              {fieldErrors.lastName && <p className="text-xs text-destructive">{fieldErrors.lastName}</p>}
             </div>
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="phone" className="text-xs text-muted-foreground">
-              Телефон
+              Телефон <span className="text-destructive">*</span>
             </Label>
             <div className="relative">
               <Phone className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
-              <Input id="phone" type="tel" placeholder="+375 (999) 123-45-67" value={formData.phone} onChange={(e) => handleInputChange("phone", e.target.value)} required className="h-12 rounded-xl border-border bg-background pl-11 text-base placeholder:text-muted-foreground/50" />
+              <Input
+                id="phone"
+                type="tel"
+                inputMode="tel"
+                placeholder="+375 (999) 123-45-67"
+                value={formData.phone}
+                onChange={(e) => handleInputChange("phone", e.target.value)}
+                autoComplete="tel"
+                aria-invalid={Boolean(fieldErrors.phone)}
+                className={cn(
+                  "h-12 rounded-xl border-border bg-background pl-11 text-base placeholder:text-muted-foreground/50",
+                  fieldErrors.phone && "border-destructive"
+                )}
+              />
             </div>
+            {fieldErrors.phone && <p className="text-xs text-destructive">{fieldErrors.phone}</p>}
           </div>
 
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="email" className="text-xs text-muted-foreground">
-                Email
-              </Label>
-              <span className="text-[10px] text-muted-foreground/50">Необязательно</span>
-            </div>
+            <Label htmlFor="email" className="text-xs text-muted-foreground">
+              Email <span className="text-destructive">*</span>
+            </Label>
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
-              <Input id="email" type="email" placeholder="ivan@example.com" value={formData.email} onChange={(e) => handleInputChange("email", e.target.value)} className="h-12 rounded-xl border-border bg-background pl-11 text-base placeholder:text-muted-foreground/50" />
+              <Input
+                id="email"
+                type="email"
+                inputMode="email"
+                placeholder="ivan@example.com"
+                value={formData.email}
+                onChange={(e) => handleInputChange("email", e.target.value)}
+                autoComplete="email"
+                aria-invalid={Boolean(fieldErrors.email)}
+                className={cn(
+                  "h-12 rounded-xl border-border bg-background pl-11 text-base placeholder:text-muted-foreground/50",
+                  fieldErrors.email && "border-destructive"
+                )}
+              />
             </div>
+            {fieldErrors.email && <p className="text-xs text-destructive">{fieldErrors.email}</p>}
           </div>
         </div>
 
@@ -434,16 +555,23 @@ export function BookingForm() {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">
-                Гости
+                Гости <span className="text-destructive">*</span>
               </Label>
               <Select
                 value={formData.guests}
                 onValueChange={(value) => {
+                  clearFieldError("guests")
                   setFormData((prev) => ({ ...prev, guests: value, time: "" }))
                   void loadAvailability(date, value)
                 }}
               >
-                <SelectTrigger className="h-12 rounded-xl border-border bg-background text-base">
+                <SelectTrigger
+                  className={cn(
+                    "h-12 rounded-xl border-border bg-background text-base",
+                    fieldErrors.guests && "border-destructive"
+                  )}
+                  aria-invalid={Boolean(fieldErrors.guests)}
+                >
                   <div className="flex items-center gap-2">
                     <Users className="h-4 w-4 text-muted-foreground/50" />
                     <SelectValue placeholder="Кол-во" />
@@ -457,14 +585,27 @@ export function BookingForm() {
                   ))}
                 </SelectContent>
               </Select>
+              {fieldErrors.guests && <p className="text-xs text-destructive">{fieldErrors.guests}</p>}
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">
-                Сеты
+                Сеты <span className="text-destructive">*</span>
               </Label>
-              <Select value={formData.set} onValueChange={(value) => handleInputChange("set", value)}>
-                <SelectTrigger className="h-12 rounded-xl border-border bg-background text-base">
+              <Select
+                value={formData.set}
+                onValueChange={(value) => {
+                  clearFieldError("set")
+                  handleInputChange("set", value)
+                }}
+              >
+                <SelectTrigger
+                  className={cn(
+                    "h-12 rounded-xl border-border bg-background text-base",
+                    fieldErrors.set && "border-destructive"
+                  )}
+                  aria-invalid={Boolean(fieldErrors.set)}
+                >
                   <div className="flex items-center gap-2">
                     <UtensilsCrossed className="h-4 w-4 text-muted-foreground/50" />
                     <SelectValue placeholder="Кол-во" />
@@ -478,12 +619,13 @@ export function BookingForm() {
                   ))}
                 </SelectContent>
               </Select>
+              {fieldErrors.set && <p className="text-xs text-destructive">{fieldErrors.set}</p>}
             </div>
           </div>
 
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">
-              Дата
+              Дата <span className="text-destructive">*</span>
             </Label>
             <Popover>
               <PopoverTrigger asChild>
@@ -503,6 +645,7 @@ export function BookingForm() {
                   mode="single"
                   selected={date}
                   onSelect={(value) => {
+                    clearFieldError("date")
                     setDate(value)
                     setFormData((prev) => ({ ...prev, time: "" }))
                     void loadAvailability(value, formData.guests)
@@ -513,12 +656,13 @@ export function BookingForm() {
                 />
               </PopoverContent>
             </Popover>
+            {fieldErrors.date && <p className="text-xs text-destructive">{fieldErrors.date}</p>}
           </div>
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label className="text-xs text-muted-foreground">
-                Время начала
+                Время начала <span className="text-destructive">*</span>
               </Label>
               <span className="flex items-center gap-1 text-[10px] text-primary">
                 <Timer className="h-3 w-3" />
@@ -527,7 +671,7 @@ export function BookingForm() {
             </div>
             {!isReadyForTimeSelection ? (
               <div className="rounded-xl border border-dashed border-border bg-background px-4 py-3 text-sm text-muted-foreground">
-                Заполните имя, фамилию, телефон, количество гостей и дату, чтобы увидеть доступное время.
+                Заполните все поля выше (имя, фамилия, телефон, email, гости, сеты и дату), чтобы увидеть доступное время.
               </div>
             ) : isAvailabilityLoading ? (
               <div className="rounded-xl border border-border bg-background px-4 py-6 text-sm text-muted-foreground">
@@ -605,6 +749,7 @@ export function BookingForm() {
                 График бронирования на день: {availabilitySchedule.openTime} - {availabilitySchedule.closeTime}
               </p>
             )}
+            {fieldErrors.time && <p className="text-xs text-destructive">{fieldErrors.time}</p>}
           </div>
         </div>
         {submitError && <p className="text-sm text-destructive">{submitError}</p>}

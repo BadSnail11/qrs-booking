@@ -64,7 +64,7 @@ export default function BookingPage() {
             <div className="flex items-start justify-between">
               <span className="text-sm opacity-70">Режим заведения</span>
               <span className="text-right text-sm font-medium whitespace-pre-line">
-                {"пн-чт 18:00-2:00\nпт 18:00-6:00\nсб 14:00-6:00\nвс 14:00-2:00"}
+                {"пн-чт 12:00-2:00\nпт 12:00-4:00\nсб 14:00-4:00\nвс 14:00-2:00"}
               </span>
             </div>
           </div>
