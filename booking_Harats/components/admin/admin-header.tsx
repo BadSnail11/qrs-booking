@@ -2,7 +2,7 @@
 
 import { format, addDays, subDays } from "date-fns"
 import { ru } from "date-fns/locale"
-import { Search, CalendarIcon, ChevronLeft, ChevronRight, BarChart3, Menu, Bell, Settings } from "lucide-react"
+import { Search, CalendarIcon, ChevronLeft, ChevronRight, BarChart3, Menu, Settings } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -20,7 +20,6 @@ interface AdminHeaderProps {
   onDateChange: (date: Date) => void
   onAnalyticsClick: () => void
   onSettingsClick: () => void
-  pendingCount?: number
   onToggleSidebar?: () => void
 }
 
@@ -31,7 +30,6 @@ export function AdminHeader({
   onDateChange,
   onAnalyticsClick,
   onSettingsClick,
-  pendingCount = 0,
   onToggleSidebar,
 }: AdminHeaderProps) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(selectedDate, i - 3))
@@ -57,21 +55,6 @@ export function AdminHeader({
         </div>
         
         <div className="flex items-center gap-2">
-          {/* Pending notifications - mobile */}
-          {pendingCount > 0 && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative h-9 w-9"
-              onClick={onToggleSidebar}
-            >
-              <Bell className="h-5 w-5" />
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-pink-500 text-[10px] font-medium text-white">
-                {pendingCount}
-              </span>
-            </Button>
-          )}
-          
           <Button
             variant="outline"
             size="sm"
@@ -157,7 +140,7 @@ export function AdminHeader({
           </Button>
 
           {/* Scrollable date pills */}
-          <div className="flex flex-1 gap-1 overflow-x-auto scrollbar-hide">
+          <div className="flex flex-1 gap-1 overflow-x-auto scrollbar-hide lg:grid lg:grid-cols-7 lg:overflow-visible">
             {days.map((day, index) => {
               const isSelected = day.toDateString() === selectedDate.toDateString()
               const isToday = day.toDateString() === new Date().toDateString()
@@ -167,7 +150,7 @@ export function AdminHeader({
                   key={index}
                   onClick={() => onDateChange(day)}
                   className={cn(
-                    "flex shrink-0 flex-col items-center rounded-lg px-2.5 py-1.5 text-sm transition-colors sm:px-3 sm:py-2",
+                    "flex shrink-0 flex-col items-center rounded-lg px-2.5 py-1.5 text-sm transition-colors sm:px-3 sm:py-2 lg:w-full",
                     isSelected
                       ? "bg-primary text-primary-foreground"
                       : isToday

@@ -2,15 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
+import { format } from "date-fns"
+import { Plus, List, Grid3X3 } from "lucide-react"
 import { AdminHeader } from "@/components/admin/admin-header"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
-import { TablesGrid } from "@/components/admin/tables-grid"
 import { BlockTableModal } from "@/components/admin/block-table-modal"
+import { TablesGrid } from "@/components/admin/tables-grid"
 import { Button } from "@/components/ui/button"
-import { Plus, List, Grid3X3 } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { format } from "date-fns"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { adminApi } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
 export type Booking = {
   id: string
@@ -43,12 +44,31 @@ export type Table = {
   blockedReason?: string
 }
 
-export type ScheduleDay = {
-  weekday: number
-  dayName: string
-  isOpen: boolean
-  openTime: string | null
-  closeTime: string | null
+type ListStatusFilter = "all" | "pending" | "confirmed" | "cancelled"
+type ListTimeFilter = "all" | "day" | "evening" | "night"
+
+function getTableSortNumber(name: string) {
+  const match = name.match(/(\d+)/)
+  return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER
+}
+
+function compareTableNames(a: Table, b: Table) {
+  const aNum = getTableSortNumber(a.name)
+  const bNum = getTableSortNumber(b.name)
+  if (aNum !== bNum) return aNum - bNum
+  return a.name.localeCompare(b.name, "ru", { numeric: true, sensitivity: "base" })
+}
+
+function compareBookingsByDateTime(a: Booking, b: Booking) {
+  return `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`)
+}
+
+function matchesTimeFilter(booking: Booking, filter: ListTimeFilter) {
+  if (filter === "all") return true
+  const hour = parseInt(booking.time.split(":")[0], 10)
+  if (filter === "day") return hour >= 6 && hour < 18
+  if (filter === "evening") return hour >= 18 && hour <= 23
+  return hour >= 0 && hour < 6
 }
 
 export default function AdminPage() {
@@ -60,10 +80,9 @@ export default function AdminPage() {
   const [error, setError] = useState("")
   const [mobileView, setMobileView] = useState<"list" | "grid">("list")
   const [showSidebar, setShowSidebar] = useState(false)
-  const [schedule, setSchedule] = useState<ScheduleDay[]>([])
   const [reservationViewMode, setReservationViewMode] = useState<"queue" | "confirmed">("queue")
-  
-  // Modal states
+  const [listStatusFilter, setListStatusFilter] = useState<ListStatusFilter>("all")
+  const [listTimeFilter, setListTimeFilter] = useState<ListTimeFilter>("all")
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false)
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
 
@@ -72,14 +91,12 @@ export default function AdminPage() {
   const loadData = async () => {
     try {
       setError("")
-      const [tablesData, bookingsData, scheduleData] = await Promise.all([
+      const [tablesData, bookingsData] = await Promise.all([
         adminApi.getTables(dateStr),
-        adminApi.getReservations(dateStr, searchQuery || undefined),
-        adminApi.getSchedule(),
+        adminApi.getReservations(undefined, searchQuery || undefined),
       ])
       setTables(tablesData as Table[])
       setBookings(bookingsData as Booking[])
-      setSchedule(scheduleData as ScheduleDay[])
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить данные")
     }
@@ -121,23 +138,67 @@ export default function AdminPage() {
     router.replace(`/admin/reservations/${reservationId}/edit?${paramsOut.toString()}`)
   }, [router, dateStr, reservationViewMode])
 
-  const filteredBookings = bookings.filter((b) => {
-    const matchesDate = b.date === dateStr
-    const matchesSearch = searchQuery === "" ||
-      b.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.lastName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.phone.includes(searchQuery)
-    return matchesDate && matchesSearch
-  })
+  const searchableBookings = useMemo(
+    () =>
+      bookings.filter((booking) => {
+        if (searchQuery === "") return true
+        const normalizedQuery = searchQuery.toLowerCase()
+        return (
+          booking.firstName.toLowerCase().includes(normalizedQuery) ||
+          booking.lastName.toLowerCase().includes(normalizedQuery) ||
+          booking.phone.includes(searchQuery)
+        )
+      }),
+    [bookings, searchQuery]
+  )
 
-  const pendingBookings = filteredBookings.filter(b => b.status === "pending")
-  const cancelledBookings = filteredBookings.filter(b => b.status === "cancelled")
-  const confirmedBookings = filteredBookings
-    .filter(b => b.status === "confirmed")
-    .sort((a, b) => a.time.localeCompare(b.time))
-  const listBookings = reservationViewMode === "confirmed"
-    ? confirmedBookings
-    : filteredBookings.filter((b) => b.status === "pending" || b.status === "cancelled")
+  const sortedTables = useMemo(() => [...tables].sort(compareTableNames), [tables])
+
+  const tableNameById = useMemo(
+    () => new Map(sortedTables.map((table) => [table.id, table.name])),
+    [sortedTables]
+  )
+
+  const selectedDateBookings = useMemo(
+    () => searchableBookings.filter((booking) => booking.date === dateStr),
+    [searchableBookings, dateStr]
+  )
+
+  const pendingBookings = useMemo(
+    () => selectedDateBookings.filter((booking) => booking.status === "pending"),
+    [selectedDateBookings]
+  )
+
+  const cancelledBookings = useMemo(
+    () => selectedDateBookings.filter((booking) => booking.status === "cancelled"),
+    [selectedDateBookings]
+  )
+
+  const confirmedBookings = useMemo(
+    () =>
+      selectedDateBookings
+        .filter((booking) => booking.status === "confirmed")
+        .sort((a, b) => a.time.localeCompare(b.time)),
+    [selectedDateBookings]
+  )
+
+  const listBookings = useMemo(
+    () =>
+      searchableBookings
+        .filter((booking) => listStatusFilter === "all" || booking.status === listStatusFilter)
+        .filter((booking) => matchesTimeFilter(booking, listTimeFilter))
+        .sort(compareBookingsByDateTime),
+    [searchableBookings, listStatusFilter, listTimeFilter]
+  )
+
+  const sidebarConfirmedBookings = reservationViewMode === "confirmed" ? confirmedBookings : []
+
+  const getTableLabel = (booking: Booking) => {
+    if (booking.table_ids && booking.table_ids.length > 1) {
+      return booking.table_ids.map((id) => tableNameById.get(id) || `#${id}`).join(" + ")
+    }
+    return tableNameById.get(booking.tableId) || `#${booking.tableId}`
+  }
 
   const handleEditBooking = (booking: Booking) => {
     const params = new URLSearchParams({
@@ -162,57 +223,95 @@ export default function AdminPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-muted/30">
-      <AdminHeader 
+      <AdminHeader
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         selectedDate={selectedDate}
         onDateChange={setSelectedDate}
         onAnalyticsClick={() => router.push("/admin/analytics")}
         onSettingsClick={() => router.push("/admin/settings")}
-        pendingCount={pendingBookings.length}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
       />
-      
-      {/* Mobile view toggle */}
-      <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2 lg:hidden">
-        <div className="flex gap-1">
-          <Button
-            variant={mobileView === "list" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setMobileView("list")}
-            className="h-8 gap-1.5"
-          >
-            <List className="h-4 w-4" />
-            Список
-          </Button>
-          <Button
-            variant={mobileView === "grid" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setMobileView("grid")}
-            className="h-8 gap-1.5"
-          >
-            <Grid3X3 className="h-4 w-4" />
-            Столы
-          </Button>
+
+      <div className="border-b border-border bg-card px-4 py-3 lg:px-6">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1 rounded-xl bg-muted p-1">
+              <Button
+                variant={mobileView === "list" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setMobileView("list")}
+                className="h-8 gap-1.5"
+              >
+                <List className="h-4 w-4" />
+                Список
+              </Button>
+              <Button
+                variant={mobileView === "grid" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setMobileView("grid")}
+                className="h-8 gap-1.5"
+              >
+                <Grid3X3 className="h-4 w-4" />
+                Столы
+              </Button>
+            </div>
+
+            {mobileView === "list" && (
+              <>
+                <Select value={listStatusFilter} onValueChange={(value) => setListStatusFilter(value as ListStatusFilter)}>
+                  <SelectTrigger className="h-9 w-full rounded-xl bg-background sm:w-[190px]">
+                    <SelectValue placeholder="Статус" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все статусы</SelectItem>
+                    <SelectItem value="pending">Ожидают</SelectItem>
+                    <SelectItem value="confirmed">Подтвержденные</SelectItem>
+                    <SelectItem value="cancelled">Отменённые</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={listTimeFilter} onValueChange={(value) => setListTimeFilter(value as ListTimeFilter)}>
+                  <SelectTrigger className="h-9 w-full rounded-xl bg-background sm:w-[210px]">
+                    <SelectValue placeholder="Период времени" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все периоды</SelectItem>
+                    <SelectItem value="day">День 06:00-17:59</SelectItem>
+                    <SelectItem value="evening">Вечер 18:00-23:59</SelectItem>
+                    <SelectItem value="night">Ночь 00:00-05:59</SelectItem>
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-muted-foreground">
+              {mobileView === "list" ? listBookings.length : confirmedBookings.length} бронирований
+            </span>
+            <Button onClick={openCreateBookingPage} className="hidden gap-2 rounded-xl lg:inline-flex">
+              <Plus className="h-4 w-4" />
+              Создать бронирование
+            </Button>
+          </div>
         </div>
-        <span className="text-xs text-muted-foreground">
-          {listBookings.length} бронирований
-        </span>
       </div>
-      
+
       <div className="flex flex-1">
-        {/* Sidebar - hidden on mobile unless toggled */}
-        <div className={cn(
-          "fixed inset-y-0 left-0 z-40 w-80 transform bg-card transition-transform duration-300 lg:relative lg:translate-x-0",
-          showSidebar ? "translate-x-0" : "-translate-x-full"
-        )}>
+        <div
+          className={cn(
+            "fixed inset-y-0 left-0 z-40 w-80 transform bg-card transition-transform duration-300 lg:hidden",
+            showSidebar ? "translate-x-0" : "-translate-x-full"
+          )}
+        >
           <AdminSidebar
             pendingBookings={pendingBookings}
-            confirmedBookings={confirmedBookings}
+            confirmedBookings={sidebarConfirmedBookings}
             cancelledBookings={cancelledBookings}
             viewMode={reservationViewMode}
             onViewModeChange={setReservationViewMode}
-            tables={tables}
+            tables={sortedTables}
             onCreateBooking={() => {
               openCreateBookingPage()
               setShowSidebar(false)
@@ -224,82 +323,74 @@ export default function AdminPage() {
             onClose={() => setShowSidebar(false)}
           />
         </div>
-        
-        {/* Overlay for mobile sidebar */}
+
         {showSidebar && (
-          <div 
+          <div
             className="fixed inset-0 z-30 bg-black/50 lg:hidden"
             onClick={() => setShowSidebar(false)}
           />
         )}
-        
-        {/* Main content */}
+
         <main className="flex-1 overflow-auto p-4 lg:p-6">
           {error && (
             <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {error}
             </div>
           )}
-          {/* Mobile list view */}
+
           {mobileView === "list" && (
-            <div className="space-y-2 lg:hidden">
+            <div className="space-y-2">
               {listBookings.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground">
-                  Нет бронирований на выбранную дату
+                  Нет бронирований по выбранным фильтрам
                 </div>
               ) : (
-                listBookings
-                  .sort((a, b) => a.time.localeCompare(b.time))
-                  .map((booking) => {
-                    const tableLabel =
-                      booking.table_ids && booking.table_ids.length > 1
-                        ? booking.table_ids
-                            .map((id) => tables.find((table) => table.id === id)?.name || `#${id}`)
-                            .join(" + ")
-                        : tables.find((table) => table.id === booking.tableId)?.name
-                    return (
-                      <button
-                        key={booking.id}
-                        onClick={() => handleEditBooking(booking)}
-                        className={cn(
-                          "w-full rounded-xl border-l-4 p-4 text-left transition-colors",
-                          booking.color
-                        )}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <div className="font-medium">
-                              {booking.firstName} {booking.lastName}
-                            </div>
-                            <div className="mt-0.5 text-sm text-muted-foreground">
-                              {booking.time} - {booking.endTime}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-sm font-medium">{tableLabel}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {booking.guests} гостей
-                            </div>
-                          </div>
+                listBookings.map((booking) => (
+                  <button
+                    key={booking.id}
+                    onClick={() => handleEditBooking(booking)}
+                    className={cn(
+                      "w-full rounded-xl border-l-4 p-4 text-left transition-colors hover:opacity-80",
+                      booking.color
+                    )}
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="font-medium">
+                          {booking.firstName} {booking.lastName}
                         </div>
-                        {booking.note && (
-                          <div className="mt-2 text-xs text-muted-foreground">
-                            {booking.note}
-                          </div>
-                        )}
-                      </button>
-                    )
-                  })
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          {booking.date} • {booking.time} - {booking.endTime}
+                        </div>
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          {getTableLabel(booking)} • {booking.guests} гостей
+                        </div>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        <div className="font-medium text-foreground">
+                          {booking.status === "pending"
+                            ? "Ожидает"
+                            : booking.status === "confirmed"
+                              ? "Подтверждена"
+                              : "Отменена"}
+                        </div>
+                        <div>{booking.phone}</div>
+                      </div>
+                    </div>
+                    {booking.note && (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        {booking.note}
+                      </div>
+                    )}
+                  </button>
+                ))
               )}
             </div>
           )}
-          
-          {/* Mobile grid view & Desktop view */}
-          <div className={cn(
-            mobileView === "grid" ? "block" : "hidden lg:block"
-          )}>
+
+          <div className={cn(mobileView === "grid" ? "block" : "hidden")}>
             <TablesGrid
-              tables={tables}
+              tables={sortedTables}
               bookings={confirmedBookings}
               onEditBooking={handleEditBooking}
               onBlockTable={handleBlockTable}
@@ -308,7 +399,6 @@ export default function AdminPage() {
         </main>
       </div>
 
-      {/* Mobile FAB */}
       <Button
         onClick={openCreateBookingPage}
         className="fixed bottom-6 right-6 z-20 h-14 w-14 rounded-full bg-lime-400 shadow-lg hover:bg-lime-500 lg:hidden"

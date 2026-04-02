@@ -98,10 +98,12 @@ export const adminApi = {
       method: "DELETE",
     })
   },
-  getReservations(date: string, q?: string) {
-    const search = new URLSearchParams({ date })
+  getReservations(date?: string, q?: string) {
+    const search = new URLSearchParams()
+    if (date) search.set("date", date)
     if (q) search.set("q", q)
-    return request<Array<Record<string, unknown>>>(ADMIN_API_URL, `/v1/reservations?${search.toString()}`)
+    const query = search.toString()
+    return request<Array<Record<string, unknown>>>(ADMIN_API_URL, `/v1/reservations${query ? `?${query}` : ""}`)
   },
   createReservation(body: Record<string, unknown>) {
     return request<Record<string, unknown>>(ADMIN_API_URL, "/v1/reservations", {
