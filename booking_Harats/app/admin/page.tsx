@@ -191,8 +191,6 @@ export default function AdminPage() {
     [searchableBookings, listStatusFilter, listTimeFilter]
   )
 
-  const sidebarConfirmedBookings = reservationViewMode === "confirmed" ? confirmedBookings : []
-
   const getTableLabel = (booking: Booking) => {
     if (booking.table_ids && booking.table_ids.length > 1) {
       return booking.table_ids.map((id) => tableNameById.get(id) || `#${id}`).join(" + ")
@@ -307,7 +305,7 @@ export default function AdminPage() {
         >
           <AdminSidebar
             pendingBookings={pendingBookings}
-            confirmedBookings={sidebarConfirmedBookings}
+            confirmedBookings={reservationViewMode === "confirmed" ? confirmedBookings : []}
             cancelledBookings={cancelledBookings}
             viewMode={reservationViewMode}
             onViewModeChange={setReservationViewMode}
@@ -321,6 +319,20 @@ export default function AdminPage() {
               setShowSidebar(false)
             }}
             onClose={() => setShowSidebar(false)}
+          />
+        </div>
+
+        <div className="hidden w-80 shrink-0 border-r border-border bg-card lg:block">
+          <AdminSidebar
+            pendingBookings={pendingBookings}
+            confirmedBookings={[]}
+            cancelledBookings={[]}
+            viewMode="queue"
+            onViewModeChange={() => undefined}
+            tables={sortedTables}
+            pendingOnly
+            onCreateBooking={openCreateBookingPage}
+            onEditBooking={handleEditBooking}
           />
         </div>
 

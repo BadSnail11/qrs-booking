@@ -15,6 +15,7 @@ interface AdminSidebarProps {
   onCreateBooking: () => void
   onEditBooking: (booking: Booking) => void
   onClose?: () => void
+  pendingOnly?: boolean
 }
 
 export function AdminSidebar({
@@ -27,6 +28,7 @@ export function AdminSidebar({
   onCreateBooking,
   onEditBooking,
   onClose,
+  pendingOnly = false,
 }: AdminSidebarProps) {
   const getTableLabel = (booking: Booking) => {
     if (booking.table_ids && booking.table_ids.length > 1) {
@@ -46,7 +48,19 @@ export function AdminSidebar({
           <X className="h-4 w-4" />
         </Button>
       </div>
-      
+
+      <div className="sticky top-0 z-10 border-b border-border bg-card p-4">
+        <Button
+          onClick={onCreateBooking}
+          className="w-full gap-2 rounded-xl bg-lime-200 py-6 text-foreground hover:bg-lime-300"
+        >
+          <Plus className="h-5 w-5" />
+          <span className="font-medium">
+            Создать бронирование
+          </span>
+        </Button>
+      </div>
+
       <div className="flex-1 overflow-auto p-4">
         {/* Stats */}
         <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -61,29 +75,31 @@ export function AdminSidebar({
           </div>
         </div>
 
-        <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-muted p-1">
-          <button
-            type="button"
-            onClick={() => onViewModeChange("queue")}
-            className={`rounded-lg px-3 py-2 text-sm transition-colors ${
-              viewMode === "queue" ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground"
-            }`}
-          >
-            Ожидание и отмены
-          </button>
-          <button
-            type="button"
-            onClick={() => onViewModeChange("confirmed")}
-            className={`rounded-lg px-3 py-2 text-sm transition-colors ${
-              viewMode === "confirmed" ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground"
-            }`}
-          >
-            Подтвержденные
-          </button>
-        </div>
+        {!pendingOnly && (
+          <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-muted p-1">
+            <button
+              type="button"
+              onClick={() => onViewModeChange("queue")}
+              className={`rounded-lg px-3 py-2 text-sm transition-colors ${
+                viewMode === "queue" ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground"
+              }`}
+            >
+              Ожидание и отмены
+            </button>
+            <button
+              type="button"
+              onClick={() => onViewModeChange("confirmed")}
+              className={`rounded-lg px-3 py-2 text-sm transition-colors ${
+                viewMode === "confirmed" ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground"
+              }`}
+            >
+              Подтвержденные
+            </button>
+          </div>
+        )}
 
         <div className="space-y-4">
-          {viewMode === "queue" ? (
+          {pendingOnly || viewMode === "queue" ? (
             <>
               <div>
                 <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -128,37 +144,39 @@ export function AdminSidebar({
                 </div>
               </div>
 
-              <div>
-                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Отменённые бронирования
+              {!pendingOnly && (
+                <div>
+                  <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Отменённые бронирования
+                  </div>
+                  <div className="space-y-2">
+                    {cancelledBookings.length === 0 ? (
+                      <div className="py-4 text-center text-sm text-muted-foreground">
+                        Нет отменённых бронирований
+                      </div>
+                    ) : (
+                      cancelledBookings.map((booking) => (
+                        <button
+                          key={booking.id}
+                          onClick={() => onEditBooking(booking)}
+                          className="w-full rounded-xl border-l-4 border-l-slate-400 bg-slate-100 p-3 text-left transition-colors hover:opacity-80"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="font-medium text-foreground">{booking.firstName}</div>
+                            <ReservationStatusBadge status={booking.status} />
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {booking.time}-{booking.endTime}
+                          </div>
+                          {getTableLabel(booking) && (
+                            <div className="text-xs text-muted-foreground">{getTableLabel(booking)}</div>
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  {cancelledBookings.length === 0 ? (
-                    <div className="py-4 text-center text-sm text-muted-foreground">
-                      Нет отменённых бронирований
-                    </div>
-                  ) : (
-                    cancelledBookings.map((booking) => (
-                      <button
-                        key={booking.id}
-                        onClick={() => onEditBooking(booking)}
-                        className="w-full rounded-xl border-l-4 border-l-slate-400 bg-slate-100 p-3 text-left transition-colors hover:opacity-80"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium text-foreground">{booking.firstName}</div>
-                          <ReservationStatusBadge status={booking.status} />
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {booking.time}-{booking.endTime}
-                        </div>
-                        {getTableLabel(booking) && (
-                          <div className="text-xs text-muted-foreground">{getTableLabel(booking)}</div>
-                        )}
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
+              )}
             </>
           ) : (
             <div>
@@ -205,19 +223,6 @@ export function AdminSidebar({
             </div>
           )}
         </div>
-      </div>
-
-      {/* Create button - fixed at bottom */}
-      <div className="border-t border-border p-4">
-        <Button
-          onClick={onCreateBooking}
-          className="w-full gap-2 rounded-xl bg-lime-200 py-6 text-foreground hover:bg-lime-300"
-        >
-          <Plus className="h-5 w-5" />
-          <span className="font-medium">
-            Создать бронирование
-          </span>
-        </Button>
       </div>
     </aside>
   )
