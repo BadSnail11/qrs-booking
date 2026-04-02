@@ -16,6 +16,8 @@ OPEN_HOUR = int(os.getenv("OPEN_HOUR", "11"))
 CLOSE_HOUR = int(os.getenv("CLOSE_HOUR", "22"))
 MAX_COMBINED_TABLES = int(os.getenv("MAX_COMBINED_TABLES", "3"))
 MAX_EXTRA_SEATS = int(os.getenv("MAX_EXTRA_SEATS", "2"))
+MAX_PARTY_SIZE = 15
+MAX_SETS = 15
 logger = logging.getLogger(__name__)
 WEEKDAY_NAMES = [
     "monday",
@@ -386,6 +388,12 @@ def create_reservation(
     admin_note=None,
     force=False,
 ):
+    guests = int(guests)
+    sets = int(sets) if sets is not None else 1
+    if guests < 1 or guests > MAX_PARTY_SIZE:
+        raise ValueError(f"guests must be between 1 and {MAX_PARTY_SIZE}")
+    if sets < 1 or sets > MAX_SETS:
+        raise ValueError(f"sets must be between 1 and {MAX_SETS}")
     if table_ids:
         issues = validate_table_selection(table_ids, guests, reservation_time)
         if (
@@ -556,6 +564,10 @@ def update_reservation(reservation_id, updates, force=False, allow_insufficient_
 
     new_guests = int(updates.get("guests", current["guests"]))
     new_sets = int(updates.get("sets", current["sets"]))
+    if new_guests < 1 or new_guests > MAX_PARTY_SIZE:
+        raise ValueError(f"guests must be between 1 and {MAX_PARTY_SIZE}")
+    if new_sets < 1 or new_sets > MAX_SETS:
+        raise ValueError(f"sets must be between 1 and {MAX_SETS}")
     new_email = updates.get("email", current["email"])
     new_phone = updates.get("phone", current["phone"])
     new_note = updates.get("note", current["note"])
