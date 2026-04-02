@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { format } from "date-fns"
+import { addDays, format } from "date-fns"
 import { Plus, List, Grid3X3 } from "lucide-react"
 import { AdminHeader } from "@/components/admin/admin-header"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
@@ -71,7 +71,10 @@ function getReservationColorIndexClass(status: Booking["status"]) {
 
 export default function AdminPage() {
   const router = useRouter()
-  const [selectedDate, setSelectedDate] = useState(new Date())
+  /** Center of the 7-day strip; when no explicit day is selected, tables/sidebar/grid use this day */
+  const [weekAnchor, setWeekAnchor] = useState(() => new Date())
+  /** Null = list shows all reservations; grid/sidebar still follow weekAnchor */
+  const [selectedDate, setSelectedDate] = useState<Date | null>(() => new Date())
   const [searchQuery, setSearchQuery] = useState("")
   const [bookings, setBookings] = useState<Booking[]>([])
   const [tables, setTables] = useState<Table[]>([])
@@ -80,12 +83,13 @@ export default function AdminPage() {
   const [showSidebar, setShowSidebar] = useState(false)
   const [reservationViewMode, setReservationViewMode] = useState<"queue" | "confirmed">("queue")
   const [listStatusFilter, setListStatusFilter] = useState<ListStatusFilter>("all")
-  /** List view only: second click on the selected date in the strip shows all reservations */
-  const [listShowAllDates, setListShowAllDates] = useState(false)
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false)
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
 
-  const dateStr = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate])
+  const dateStr = useMemo(
+    () => format(selectedDate ?? weekAnchor, "yyyy-MM-dd"),
+    [selectedDate, weekAnchor]
+  )
 
   const loadData = async () => {
     try {
@@ -119,7 +123,9 @@ export default function AdminPage() {
     const dateParam = params.get("date")
     const viewParam = params.get("view")
     if (dateParam) {
-      setSelectedDate(new Date(`${dateParam}T00:00:00`))
+      const d = new Date(`${dateParam}T00:00:00`)
+      setSelectedDate(d)
+      setWeekAnchor(d)
     }
     if (viewParam === "confirmed" || viewParam === "queue") {
       setReservationViewMode(viewParam)
@@ -184,11 +190,11 @@ export default function AdminPage() {
 
   const listBookings = useMemo(() => {
     const source =
-      mobileView === "list" && listShowAllDates ? searchableBookings : selectedDateBookings
+      mobileView === "list" && selectedDate === null ? searchableBookings : selectedDateBookings
     return source
       .filter((booking) => listStatusFilter === "all" || booking.status === listStatusFilter)
       .sort(compareBookingsByDateTime)
-  }, [mobileView, listShowAllDates, searchableBookings, selectedDateBookings, listStatusFilter])
+  }, [mobileView, selectedDate, searchableBookings, selectedDateBookings, listStatusFilter])
 
   const getTableLabel = (booking: Booking) => {
     if (booking.table_ids && booking.table_ids.length > 1) {
@@ -199,16 +205,27 @@ export default function AdminPage() {
 
   const handleDateChange = (date: Date) => {
     setSelectedDate(date)
-    setListShowAllDates(false)
+    setWeekAnchor(date)
   }
 
   const handleDatePillClick = (day: Date) => {
     const dayStr = format(day, "yyyy-MM-dd")
-    if (mobileView === "list" && dayStr === dateStr) {
-      setListShowAllDates((prev) => !prev)
+    const selectedStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : null
+    if (mobileView === "list" && selectedStr === dayStr) {
+      setSelectedDate(null)
+      return
+    }
+    setSelectedDate(day)
+    setWeekAnchor(day)
+  }
+
+  const handleShiftDay = (delta: number) => {
+    if (selectedDate) {
+      const next = addDays(selectedDate, delta)
+      setSelectedDate(next)
+      setWeekAnchor(next)
     } else {
-      setSelectedDate(day)
-      setListShowAllDates(false)
+      setWeekAnchor((a) => addDays(a, delta))
     }
   }
 
@@ -238,10 +255,11 @@ export default function AdminPage() {
       <AdminHeader
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        weekAnchor={weekAnchor}
         selectedDate={selectedDate}
         onDateChange={handleDateChange}
         onDatePillClick={handleDatePillClick}
-        listShowAllDates={listShowAllDates}
+        onShiftDay={handleShiftDay}
         mobileView={mobileView}
         onAnalyticsClick={() => router.push("/admin/analytics")}
         onSettingsClick={() => router.push("/admin/settings")}
@@ -357,10 +375,10 @@ export default function AdminPage() {
 
           {mobileView === "list" && (
             <div className="space-y-2">
-              {listShowAllDates && (
+              {selectedDate === null && (
                 <p className="rounded-lg border border-dashed border-primary/30 bg-primary/5 px-3 py-2 text-sm text-muted-foreground">
-                  Показаны бронирования за все даты. Нажмите на выбранную дату в полоске ещё раз, чтобы
-                  оставить только этот день.
+                  Дата не выбрана — в списке показаны все бронирования. Выберите день в полоске или в
+                  календаре, чтобы фильтровать по дню.
                 </p>
               )}
               {listBookings.length === 0 ? (

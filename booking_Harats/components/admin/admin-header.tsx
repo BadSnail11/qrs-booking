@@ -1,6 +1,6 @@
 "use client"
 
-import { format, addDays, subDays } from "date-fns"
+import { format, addDays } from "date-fns"
 import { ru } from "date-fns/locale"
 import { Search, CalendarIcon, ChevronLeft, ChevronRight, BarChart3, Menu, Settings } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -16,13 +16,16 @@ import { cn } from "@/lib/utils"
 interface AdminHeaderProps {
   searchQuery: string
   onSearchChange: (query: string) => void
-  selectedDate: Date
-  /** Calendar, arrows, and picking a different day in the strip */
+  /** Center of the 7-day strip; used when no day is explicitly selected */
+  weekAnchor: Date
+  /** Null = no day chosen (list shows all bookings); grid/sidebar use weekAnchor for the day */
+  selectedDate: Date | null
+  /** Calendar and choosing a day from the strip (except pill handler) */
   onDateChange: (date: Date) => void
-  /** Date lineup pills: use this so list view can toggle “all dates” on second click */
+  /** Date lineup pills — list view: second click on selected day clears selection */
   onDatePillClick: (day: Date) => void
-  /** When true (list + all dates), selected pill gets an extra hint style */
-  listShowAllDates?: boolean
+  /** Prev/next day: shifts selected day, or only the strip when nothing selected */
+  onShiftDay: (delta: number) => void
   mobileView?: "list" | "grid"
   onAnalyticsClick: () => void
   onSettingsClick: () => void
@@ -32,16 +35,17 @@ interface AdminHeaderProps {
 export function AdminHeader({
   searchQuery,
   onSearchChange,
+  weekAnchor,
   selectedDate,
   onDateChange,
   onDatePillClick,
-  listShowAllDates = false,
+  onShiftDay,
   mobileView = "list",
   onAnalyticsClick,
   onSettingsClick,
   onToggleSidebar,
 }: AdminHeaderProps) {
-  const days = Array.from({ length: 7 }, (_, i) => addDays(selectedDate, i - 3))
+  const days = Array.from({ length: 7 }, (_, i) => addDays(weekAnchor, i - 3))
 
   return (
     <header className="border-b border-border bg-card">
@@ -131,7 +135,7 @@ export function AdminHeader({
             <PopoverContent className="w-auto p-0" align="start">
               <Calendar
                 mode="single"
-                selected={selectedDate}
+                selected={selectedDate ?? undefined}
                 onSelect={(date) => date && onDateChange(date)}
                 locale={ru}
                 initialFocus
@@ -143,7 +147,8 @@ export function AdminHeader({
             variant="ghost"
             size="icon"
             className="h-10 w-10 shrink-0"
-            onClick={() => onDateChange(subDays(selectedDate, 1))}
+            type="button"
+            onClick={() => onShiftDay(-1)}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -151,9 +156,10 @@ export function AdminHeader({
           {/* Scrollable date pills */}
           <div className="flex flex-1 gap-1 overflow-x-auto scrollbar-hide lg:grid lg:grid-cols-7 lg:overflow-visible">
             {days.map((day, index) => {
-              const isSelected = day.toDateString() === selectedDate.toDateString()
+              const isSelected =
+                selectedDate !== null && day.toDateString() === selectedDate.toDateString()
               const isToday = day.toDateString() === new Date().toDateString()
-              
+
               return (
                 <button
                   type="button"
@@ -161,9 +167,7 @@ export function AdminHeader({
                   onClick={() => onDatePillClick(day)}
                   title={
                     mobileView === "list" && isSelected
-                      ? listShowAllDates
-                        ? "Нажмите, чтобы показать только этот день"
-                        : "Нажмите ещё раз, чтобы показать все бронирования"
+                      ? "Нажмите ещё раз, чтобы снять выбор даты"
                       : undefined
                   }
                   className={cn(
@@ -172,8 +176,7 @@ export function AdminHeader({
                       ? "bg-primary text-primary-foreground"
                       : isToday
                       ? "bg-muted text-foreground"
-                      : "hover:bg-muted",
-                    mobileView === "list" && isSelected && listShowAllDates && "ring-2 ring-primary-foreground/40 ring-offset-2 ring-offset-background"
+                      : "hover:bg-muted"
                   )}
                 >
                   <span className="text-[10px] font-medium uppercase sm:text-xs">
@@ -191,7 +194,8 @@ export function AdminHeader({
             variant="ghost"
             size="icon"
             className="h-10 w-10 shrink-0"
-            onClick={() => onDateChange(addDays(selectedDate, 1))}
+            type="button"
+            onClick={() => onShiftDay(1)}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
