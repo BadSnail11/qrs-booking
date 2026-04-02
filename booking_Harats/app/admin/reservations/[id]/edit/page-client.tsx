@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
-import { ArrowLeft, CalendarIcon, Phone as PhoneIcon, AlertTriangle, Users, X, Check } from "lucide-react"
+import { ArrowLeft, CalendarIcon, AlertTriangle, Users, X, Check } from "lucide-react"
 import type { Booking, Table } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -32,6 +32,8 @@ type TableOption = {
   capacity: number
 }
 
+type PendingAction = "save" | "confirm" | "cancel" | null
+
 export function AdminEditReservationPageClient({
   reservationId,
   initialDate,
@@ -46,6 +48,7 @@ export function AdminEditReservationPageClient({
   const [existingBookings, setExistingBookings] = useState<Booking[]>([])
   const [date, setDate] = useState<Date>()
   const [showConfirmation, setShowConfirmation] = useState(false)
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [showWarning, setShowWarning] = useState(false)
   const [warningMessage, setWarningMessage] = useState("")
   const [conflictingBooking, setConflictingBooking] = useState<Booking | null>(null)
@@ -273,6 +276,7 @@ export function AdminEditReservationPageClient({
       setSubmitError("Выберите стол для бронирования")
       return
     }
+    setPendingAction("save")
     setShowConfirmation(true)
   }
 
@@ -344,6 +348,25 @@ export function AdminEditReservationPageClient({
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Не удалось вернуть бронь в ожидание")
     }
+  }
+
+  const actionConfirmationText: Record<Exclude<PendingAction, null>, string> = {
+    save: "Сохранить изменения бронирования?",
+    confirm: "Подтвердить это бронирование?",
+    cancel: "Отменить это бронирование?",
+  }
+
+  const confirmPendingAction = async () => {
+    if (!pendingAction) return
+    if (pendingAction === "save") {
+      await confirmSave()
+      return
+    }
+    if (pendingAction === "confirm") {
+      await handleConfirmReservation()
+      return
+    }
+    await handleCancelReservation()
   }
 
   return (
@@ -531,12 +554,24 @@ export function AdminEditReservationPageClient({
 
                   <div className="mt-6 flex flex-wrap justify-end gap-2">
                     {booking.status !== "cancelled" && (
-                      <Button onClick={() => void handleCancelReservation()} variant="destructive">
+                      <Button
+                        onClick={() => {
+                          setPendingAction("cancel")
+                          setShowConfirmation(true)
+                        }}
+                        variant="destructive"
+                      >
                         Отменить
                       </Button>
                     )}
                     {booking.status === "pending" && (
-                      <Button onClick={() => void handleConfirmReservation()} variant="secondary">
+                      <Button
+                        onClick={() => {
+                          setPendingAction("confirm")
+                          setShowConfirmation(true)
+                        }}
+                        variant="secondary"
+                      >
                         Подтвердить
                       </Button>
                     )}
@@ -564,31 +599,24 @@ export function AdminEditReservationPageClient({
         </main>
       </div>
 
-      <AlertDialog open={showConfirmation} onOpenChange={setShowConfirmation}>
+      <AlertDialog
+        open={showConfirmation}
+        onOpenChange={(open) => {
+          setShowConfirmation(open)
+          if (!open) setPendingAction(null)
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <PhoneIcon className="h-5 w-5 text-primary" />
-              Подтверждение изменений
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-4">
-                <p>
-                  Если вы точно уверены в изменении этих данных, позвоните по номеру
-                  и предупредите о изменениях:
-                </p>
-                <div className="rounded-lg bg-muted p-4 text-center">
-                  <a href="tel:+375291234567" className="text-lg font-semibold text-primary hover:underline">
-                    +375 29 123-45-67
-                  </a>
-                </div>
-              </div>
+            <AlertDialogTitle>Подтвердите действие</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingAction ? actionConfirmationText[pendingAction] : "Вы уверены?"}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void confirmSave()}>
-              ОК, сохранить
+            <AlertDialogCancel>Нет</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmPendingAction()}>
+              Да
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

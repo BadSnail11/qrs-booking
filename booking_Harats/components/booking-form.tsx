@@ -124,6 +124,7 @@ export function BookingForm() {
   const [date, setDate] = useState<Date>()
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isAvailabilityLoading, setIsAvailabilityLoading] = useState(false)
   const [showManualConfirmation, setShowManualConfirmation] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [availableSlots, setAvailableSlots] = useState<AvailabilitySlot[]>([])
@@ -199,8 +200,10 @@ export function BookingForm() {
     if (!nextDate || !guests) {
       setAvailableSlots([])
       setAvailabilitySchedule(null)
+      setIsAvailabilityLoading(false)
       return
     }
+    setIsAvailabilityLoading(true)
     try {
       const data = await userApi.getAvailability(format(nextDate, "yyyy-MM-dd"), parseInt(guests, 10))
       setAvailabilitySchedule(data.schedule)
@@ -208,6 +211,8 @@ export function BookingForm() {
     } catch {
       setAvailableSlots([])
       setAvailabilitySchedule(null)
+    } finally {
+      setIsAvailabilityLoading(false)
     }
   }
 
@@ -524,6 +529,13 @@ export function BookingForm() {
               <div className="rounded-xl border border-dashed border-border bg-background px-4 py-3 text-sm text-muted-foreground">
                 Заполните имя, фамилию, телефон, количество гостей и дату, чтобы увидеть доступное время.
               </div>
+            ) : isAvailabilityLoading ? (
+              <div className="rounded-xl border border-border bg-background px-4 py-6 text-sm text-muted-foreground">
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  Загружаем доступное время...
+                </span>
+              </div>
             ) : (
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -581,7 +593,7 @@ export function BookingForm() {
                 </div>
               </div>
             )}
-            {isReadyForTimeSelection && availableSlots.length === 0 && (
+            {isReadyForTimeSelection && !isAvailabilityLoading && availableSlots.length === 0 && (
               <p className="text-xs text-destructive">
                 {availabilitySchedule && !availabilitySchedule.isOpen
                   ? "На выбранный день бронирование закрыто"

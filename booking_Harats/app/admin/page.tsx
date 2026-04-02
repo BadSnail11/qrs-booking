@@ -153,6 +153,7 @@ export default function AdminPage() {
         return (
           booking.firstName.toLowerCase().includes(normalizedQuery) ||
           booking.lastName.toLowerCase().includes(normalizedQuery) ||
+          (booking.note || "").toLowerCase().includes(normalizedQuery) ||
           booking.phone.includes(searchQuery)
         )
       }),
