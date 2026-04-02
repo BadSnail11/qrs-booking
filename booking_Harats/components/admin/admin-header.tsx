@@ -17,7 +17,13 @@ interface AdminHeaderProps {
   searchQuery: string
   onSearchChange: (query: string) => void
   selectedDate: Date
+  /** Calendar, arrows, and picking a different day in the strip */
   onDateChange: (date: Date) => void
+  /** Date lineup pills: use this so list view can toggle “all dates” on second click */
+  onDatePillClick: (day: Date) => void
+  /** When true (list + all dates), selected pill gets an extra hint style */
+  listShowAllDates?: boolean
+  mobileView?: "list" | "grid"
   onAnalyticsClick: () => void
   onSettingsClick: () => void
   onToggleSidebar?: () => void
@@ -28,6 +34,9 @@ export function AdminHeader({
   onSearchChange,
   selectedDate,
   onDateChange,
+  onDatePillClick,
+  listShowAllDates = false,
+  mobileView = "list",
   onAnalyticsClick,
   onSettingsClick,
   onToggleSidebar,
@@ -147,15 +156,24 @@ export function AdminHeader({
               
               return (
                 <button
+                  type="button"
                   key={index}
-                  onClick={() => onDateChange(day)}
+                  onClick={() => onDatePillClick(day)}
+                  title={
+                    mobileView === "list" && isSelected
+                      ? listShowAllDates
+                        ? "Нажмите, чтобы показать только этот день"
+                        : "Нажмите ещё раз, чтобы показать все бронирования"
+                      : undefined
+                  }
                   className={cn(
                     "flex shrink-0 flex-col items-center rounded-lg px-2.5 py-1.5 text-sm transition-colors sm:px-3 sm:py-2 lg:w-full",
                     isSelected
                       ? "bg-primary text-primary-foreground"
                       : isToday
                       ? "bg-muted text-foreground"
-                      : "hover:bg-muted"
+                      : "hover:bg-muted",
+                    mobileView === "list" && isSelected && listShowAllDates && "ring-2 ring-primary-foreground/40 ring-offset-2 ring-offset-background"
                   )}
                 >
                   <span className="text-[10px] font-medium uppercase sm:text-xs">

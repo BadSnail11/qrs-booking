@@ -80,6 +80,8 @@ export default function AdminPage() {
   const [showSidebar, setShowSidebar] = useState(false)
   const [reservationViewMode, setReservationViewMode] = useState<"queue" | "confirmed">("queue")
   const [listStatusFilter, setListStatusFilter] = useState<ListStatusFilter>("all")
+  /** List view only: second click on the selected date in the strip shows all reservations */
+  const [listShowAllDates, setListShowAllDates] = useState(false)
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false)
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
 
@@ -180,13 +182,13 @@ export default function AdminPage() {
     [selectedDateBookings]
   )
 
-  const listBookings = useMemo(
-    () =>
-      selectedDateBookings
-        .filter((booking) => listStatusFilter === "all" || booking.status === listStatusFilter)
-        .sort(compareBookingsByDateTime),
-    [selectedDateBookings, listStatusFilter]
-  )
+  const listBookings = useMemo(() => {
+    const source =
+      mobileView === "list" && listShowAllDates ? searchableBookings : selectedDateBookings
+    return source
+      .filter((booking) => listStatusFilter === "all" || booking.status === listStatusFilter)
+      .sort(compareBookingsByDateTime)
+  }, [mobileView, listShowAllDates, searchableBookings, selectedDateBookings, listStatusFilter])
 
   const getTableLabel = (booking: Booking) => {
     if (booking.table_ids && booking.table_ids.length > 1) {
@@ -195,9 +197,24 @@ export default function AdminPage() {
     return tableNameById.get(booking.tableId) || `#${booking.tableId}`
   }
 
+  const handleDateChange = (date: Date) => {
+    setSelectedDate(date)
+    setListShowAllDates(false)
+  }
+
+  const handleDatePillClick = (day: Date) => {
+    const dayStr = format(day, "yyyy-MM-dd")
+    if (mobileView === "list" && dayStr === dateStr) {
+      setListShowAllDates((prev) => !prev)
+    } else {
+      setSelectedDate(day)
+      setListShowAllDates(false)
+    }
+  }
+
   const handleEditBooking = (booking: Booking) => {
     const params = new URLSearchParams({
-      date: dateStr,
+      date: booking.date,
       view: reservationViewMode,
     })
     router.push(`/admin/reservations/${booking.id}/edit?${params.toString()}`)
@@ -222,7 +239,10 @@ export default function AdminPage() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         selectedDate={selectedDate}
-        onDateChange={setSelectedDate}
+        onDateChange={handleDateChange}
+        onDatePillClick={handleDatePillClick}
+        listShowAllDates={listShowAllDates}
+        mobileView={mobileView}
         onAnalyticsClick={() => router.push("/admin/analytics")}
         onSettingsClick={() => router.push("/admin/settings")}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
@@ -337,6 +357,12 @@ export default function AdminPage() {
 
           {mobileView === "list" && (
             <div className="space-y-2">
+              {listShowAllDates && (
+                <p className="rounded-lg border border-dashed border-primary/30 bg-primary/5 px-3 py-2 text-sm text-muted-foreground">
+                  Показаны бронирования за все даты. Нажмите на выбранную дату в полоске ещё раз, чтобы
+                  оставить только этот день.
+                </p>
+              )}
               {listBookings.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground">
                   Нет бронирований по выбранным фильтрам

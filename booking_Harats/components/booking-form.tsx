@@ -33,7 +33,9 @@ import { ru } from "date-fns/locale"
 import { CalendarIcon, Check, Users, User, Phone, UtensilsCrossed, Timer, Mail, AlertTriangle, History } from "lucide-react"
 import { userApi } from "@/lib/api"
 
-const guestOptions = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+/** Max party size for the public booking form */
+const MAX_GUESTS_USER = 15
+const guestOptions = Array.from({ length: MAX_GUESTS_USER }, (_, i) => String(i + 1))
 const setOptions = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
 const USER_BOOKING_DRAFT_KEY = "qrs-user-booking-draft"
 const USER_BOOKING_HISTORY_COOKIE = "qrs-user-booking-history"
@@ -197,12 +199,15 @@ export function BookingForm() {
       const rawDraft = window.localStorage.getItem(USER_BOOKING_DRAFT_KEY)
       if (!rawDraft) return
       const draft = JSON.parse(rawDraft) as UserBookingDraft
-      setFormData(draft.formData)
+      const g = parseInt(draft.formData.guests, 10)
+      const guestsRestored =
+        Number.isFinite(g) && g >= 1 && g <= MAX_GUESTS_USER ? String(g) : ""
+      setFormData({ ...draft.formData, guests: guestsRestored })
       if (draft.date) {
         const restoredDate = new Date(`${draft.date}T00:00:00`)
         setDate(restoredDate)
-        if (draft.formData.guests) {
-          void loadAvailability(restoredDate, draft.formData.guests)
+        if (guestsRestored) {
+          void loadAvailability(restoredDate, guestsRestored)
         }
       }
     } catch {
@@ -245,7 +250,14 @@ export function BookingForm() {
     if (pe) e.phone = pe
     const ee = getEmailError(formData.email)
     if (ee) e.email = ee
-    if (!formData.guests) e.guests = "Выберите количество гостей."
+    if (!formData.guests) {
+      e.guests = "Выберите количество гостей."
+    } else {
+      const g = parseInt(formData.guests, 10)
+      if (!Number.isFinite(g) || g < 1 || g > MAX_GUESTS_USER) {
+        e.guests = `Максимум ${MAX_GUESTS_USER} гостей.`
+      }
+    }
     if (!formData.set) e.set = "Выберите количество сетов."
     if (!date) e.date = "Выберите дату."
     if (!formData.time) e.time = "Выберите время бронирования."
