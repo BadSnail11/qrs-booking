@@ -27,6 +27,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
@@ -42,6 +50,8 @@ type ReservationDetails = {
   date: string
   time: string
   status?: "confirmed" | "pending" | "cancelled"
+  guests?: number
+  sets?: number
 }
 
 type AvailabilitySchedule = {
@@ -80,6 +90,9 @@ type UserBookingHistoryItem = {
   email: string
   date: string
   time: string
+  /** Present for entries saved after this update */
+  guests?: number
+  sets?: number
   status: "confirmed" | "pending" | "cancelled" | "unknown"
   createdAt: string
 }
@@ -144,6 +157,7 @@ export function BookingForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [isAvailabilityLoading, setIsAvailabilityLoading] = useState(false)
   const [showManualConfirmation, setShowManualConfirmation] = useState(false)
+  const [showReviewDialog, setShowReviewDialog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [availableSlots, setAvailableSlots] = useState<AvailabilitySlot[]>([])
   const [availabilitySchedule, setAvailabilitySchedule] = useState<AvailabilitySchedule | null>(null)
@@ -186,6 +200,11 @@ export function BookingForm() {
   const selectedSlot = useMemo(
     () => availableSlots.find((slot) => slot.time === formData.time) || null,
     [availableSlots, formData.time]
+  )
+
+  const reviewDateFormatted = useMemo(
+    () => (date ? format(date, "d MMMM yyyy", { locale: ru }) : ""),
+    [date]
   )
 
   useEffect(() => {
@@ -334,8 +353,15 @@ export function BookingForm() {
         time: formData.time,
       })
 
-      const reservation = result.reservation as ReservationDetails
-      setReservationDetails(reservation)
+      const reservation = result.reservation as ReservationDetails & {
+        guests?: number
+        sets?: number
+      }
+      setReservationDetails({
+        ...reservation,
+        guests: reservation.guests ?? parseInt(formData.guests, 10),
+        sets: reservation.sets ?? parseInt(formData.set, 10),
+      })
       setIsSubmitted(true)
       setShowManualConfirmation(false)
       const nextHistoryItem: UserBookingHistoryItem = {
@@ -346,6 +372,8 @@ export function BookingForm() {
         email: formData.email.trim(),
         date: reservation.date,
         time: reservation.time,
+        guests: parseInt(formData.guests, 10),
+        sets: parseInt(formData.set, 10),
         status: reservation.status || "unknown",
         createdAt: new Date().toISOString(),
       }
@@ -381,18 +409,27 @@ export function BookingForm() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const errors = validateBookingForm()
     setFieldErrors(errors)
     if (Object.keys(errors).length > 0) {
       return
     }
+    setShowReviewDialog(true)
+  }
+
+  const handleReviewConfirm = () => {
+    setShowReviewDialog(false)
     if (selectedSlot?.confirmation_mode === "manual") {
       setShowManualConfirmation(true)
-      return
+    } else {
+      void submitReservation()
     }
-    await submitReservation()
+  }
+
+  const handleReviewChange = () => {
+    setShowReviewDialog(false)
   }
 
   if (isSubmitted) {
@@ -408,10 +445,14 @@ export function BookingForm() {
           Сохраните детали бронирования. Отменить бронь можно только по звонку в заведение.
         </p>
         {reservationDetails && (
-          <div className="mb-8 w-full max-w-sm rounded-2xl border border-border bg-background p-4 text-left text-sm">
+          <div className="mb-8 w-full max-w-sm rounded-2xl border border-border bg-background p-4 text-left text-sm space-y-1">
             <div>Номер: #{reservationDetails.id}</div>
             <div>Дата: {reservationDetails.date}</div>
             <div>Время: {reservationDetails.time}</div>
+            {reservationDetails.guests != null && (
+              <div>Гостей: {reservationDetails.guests}</div>
+            )}
+            {reservationDetails.sets != null && <div>Сетов: {reservationDetails.sets}</div>}
           </div>
         )}
         <Button
@@ -468,6 +509,13 @@ export function BookingForm() {
                         </div>
                         <div className="text-muted-foreground">{item.phone}</div>
                         {item.email && <div className="text-muted-foreground">{item.email}</div>}
+                        {(item.guests != null || item.sets != null) && (
+                          <div className="text-muted-foreground">
+                            {item.guests != null && <span>Гостей: {item.guests}</span>}
+                            {item.guests != null && item.sets != null && " · "}
+                            {item.sets != null && <span>Сетов: {item.sets}</span>}
+                          </div>
+                        )}
                       </div>
                       <div className="text-left sm:text-right">
                         <div className="font-medium text-foreground">#{item.id}</div>
@@ -832,6 +880,72 @@ export function BookingForm() {
           </Button>
         </form>
       </div>
+
+      <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Проверьте бронирование</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-3 pt-2 text-left text-foreground">
+                <p className="text-sm text-muted-foreground">
+                  Убедитесь, что всё указано верно. При необходимости нажмите «Изменить» и поправьте данные в форме.
+                </p>
+                {selectedSlot?.confirmation_mode === "manual" && (
+                  <p className="text-sm text-amber-700 dark:text-amber-500">
+                    Для этого времени нужно подтверждение ресторана — после этого шага мы покажем ещё одно
+                    напоминание.
+                  </p>
+                )}
+                <dl className="space-y-2 rounded-xl border border-border bg-muted/30 p-4 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Имя</dt>
+                    <dd className="text-right font-medium">
+                      {formData.firstName} {formData.lastName}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Телефон</dt>
+                    <dd className="text-right font-medium">{formData.phone.trim()}</dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Email</dt>
+                    <dd className="break-all text-right font-medium">{formData.email.trim()}</dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Дата</dt>
+                    <dd className="text-right font-medium">{reviewDateFormatted}</dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Время</dt>
+                    <dd className="text-right font-medium">{formData.time}</dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Гостей</dt>
+                    <dd className="text-right font-medium">{formData.guests}</dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Сетов</dt>
+                    <dd className="text-right font-medium">{formData.set}</dd>
+                  </div>
+                </dl>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full rounded-xl sm:w-auto"
+              onClick={handleReviewChange}
+            >
+              Изменить
+            </Button>
+            <Button type="button" className="w-full rounded-xl sm:w-auto" onClick={handleReviewConfirm}>
+              Забронировать
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={showManualConfirmation} onOpenChange={setShowManualConfirmation}>
         <AlertDialogContent>
