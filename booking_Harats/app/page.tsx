@@ -21,7 +21,7 @@ export default function BookingPage() {
       <main className="flex-1 px-5">
         {/* Menu Link - stylish card */}
         <a
-          href="/h5dte67zhkl4jnhcgyoch3srzhjjt5ty.pdf"
+          href="/Menu4.pdf"
           target="_blank"
           rel="noopener noreferrer"
           className="group mb-8 flex items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm transition-all active:scale-[0.98]"

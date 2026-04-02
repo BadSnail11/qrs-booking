@@ -7,6 +7,7 @@ import { Plus, List, Grid3X3 } from "lucide-react"
 import { AdminHeader } from "@/components/admin/admin-header"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { BlockTableModal } from "@/components/admin/block-table-modal"
+import { ReservationStatusBadge } from "@/components/admin/reservation-status-badge"
 import { TablesGrid } from "@/components/admin/tables-grid"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -69,6 +70,12 @@ function matchesTimeFilter(booking: Booking, filter: ListTimeFilter) {
   if (filter === "day") return hour >= 6 && hour < 18
   if (filter === "evening") return hour >= 18 && hour <= 23
   return hour >= 0 && hour < 6
+}
+
+function getReservationColorIndexClass(status: Booking["status"]) {
+  if (status === "confirmed") return "bg-green-400"
+  if (status === "pending") return "bg-yellow-400"
+  return "bg-slate-400"
 }
 
 export default function AdminPage() {
@@ -368,8 +375,17 @@ export default function AdminPage() {
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <div className="font-medium">
-                          {booking.firstName} {booking.lastName}
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={cn(
+                              "h-3 w-3 shrink-0 rounded-full ring-2 ring-white/70",
+                              getReservationColorIndexClass(booking.status)
+                            )}
+                            aria-hidden="true"
+                          />
+                          <div className="font-medium">
+                            {booking.firstName} {booking.lastName}
+                          </div>
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">
                           {booking.date} • {booking.time} - {booking.endTime}
@@ -379,12 +395,8 @@ export default function AdminPage() {
                         </div>
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        <div className="font-medium text-foreground">
-                          {booking.status === "pending"
-                            ? "Ожидает"
-                            : booking.status === "confirmed"
-                              ? "Подтверждена"
-                              : "Отменена"}
+                        <div className="flex justify-start sm:justify-end">
+                          <ReservationStatusBadge status={booking.status} />
                         </div>
                         <div>{booking.phone}</div>
                       </div>

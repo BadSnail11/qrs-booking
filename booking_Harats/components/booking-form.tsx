@@ -30,18 +30,20 @@ import {
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
-import { CalendarIcon, Check, Users, User, Phone, UtensilsCrossed, Timer, Mail, AlertTriangle } from "lucide-react"
+import { CalendarIcon, Check, Users, User, Phone, UtensilsCrossed, Timer, Mail, AlertTriangle, History } from "lucide-react"
 import { userApi } from "@/lib/api"
 
 const guestOptions = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
 const setOptions = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
 const USER_BOOKING_DRAFT_KEY = "qrs-user-booking-draft"
+const USER_BOOKING_HISTORY_COOKIE = "qrs-user-booking-history"
+const USER_BOOKING_HISTORY_LIMIT = 10
 
 type ReservationDetails = {
   id: string
   date: string
   time: string
-  confirmation_code: string
+  status?: "confirmed" | "pending" | "cancelled"
 }
 
 type AvailabilitySchedule = {
@@ -72,14 +74,62 @@ type UserBookingDraft = {
   }
 }
 
+type UserBookingHistoryItem = {
+  id: string
+  firstName: string
+  lastName: string
+  phone: string
+  email: string
+  date: string
+  time: string
+  status: "confirmed" | "pending" | "cancelled" | "unknown"
+  createdAt: string
+}
+
+function readCookie(name: string) {
+  if (typeof document === "undefined") return null
+  const prefix = `${name}=`
+  const entry = document.cookie
+    .split("; ")
+    .find((part) => part.startsWith(prefix))
+  return entry ? decodeURIComponent(entry.slice(prefix.length)) : null
+}
+
+function writeCookie(name: string, value: string, maxAgeSeconds: number) {
+  if (typeof document === "undefined") return
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSeconds}; samesite=lax`
+}
+
+function loadReservationHistory() {
+  const raw = readCookie(USER_BOOKING_HISTORY_COOKIE)
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as UserBookingHistoryItem[]
+    if (!Array.isArray(parsed)) return []
+    return parsed
+  } catch {
+    return []
+  }
+}
+
+function saveReservationHistory(items: UserBookingHistoryItem[]) {
+  writeCookie(
+    USER_BOOKING_HISTORY_COOKIE,
+    JSON.stringify(items.slice(0, USER_BOOKING_HISTORY_LIMIT)),
+    60 * 60 * 24 * 180
+  )
+}
+
 export function BookingForm() {
   const [date, setDate] = useState<Date>()
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [showManualConfirmation, setShowManualConfirmation] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [availableSlots, setAvailableSlots] = useState<AvailabilitySlot[]>([])
   const [availabilitySchedule, setAvailabilitySchedule] = useState<AvailabilitySchedule | null>(null)
   const [reservationDetails, setReservationDetails] = useState<ReservationDetails | null>(null)
+  const [reservationHistory, setReservationHistory] = useState<UserBookingHistoryItem[]>([])
   const [submitError, setSubmitError] = useState("")
   const [formData, setFormData] = useState({
     firstName: "",
@@ -115,6 +165,7 @@ export function BookingForm() {
   useEffect(() => {
     if (typeof window === "undefined") return
     try {
+      setReservationHistory(loadReservationHistory())
       const rawDraft = window.localStorage.getItem(USER_BOOKING_DRAFT_KEY)
       if (!rawDraft) return
       const draft = JSON.parse(rawDraft) as UserBookingDraft
@@ -179,6 +230,23 @@ export function BookingForm() {
       setReservationDetails(reservation)
       setIsSubmitted(true)
       setShowManualConfirmation(false)
+      const nextHistoryItem: UserBookingHistoryItem = {
+        id: reservation.id,
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        phone: formData.phone.trim(),
+        email: formData.email.trim(),
+        date: reservation.date,
+        time: reservation.time,
+        status: reservation.status || "unknown",
+        createdAt: new Date().toISOString(),
+      }
+      const nextHistory = [
+        nextHistoryItem,
+        ...reservationHistory.filter((item) => item.id !== reservation.id),
+      ].slice(0, USER_BOOKING_HISTORY_LIMIT)
+      setReservationHistory(nextHistory)
+      saveReservationHistory(nextHistory)
       if (typeof window !== "undefined") {
         window.localStorage.removeItem(USER_BOOKING_DRAFT_KEY)
       }
@@ -227,7 +295,6 @@ export function BookingForm() {
             <div>Номер: #{reservationDetails.id}</div>
             <div>Дата: {reservationDetails.date}</div>
             <div>Время: {reservationDetails.time}</div>
-            <div>Код подтверждения: {reservationDetails.confirmation_code}</div>
           </div>
         )}
         <Button
@@ -244,6 +311,67 @@ export function BookingForm() {
   return (
     <>
       <div className="rounded-3xl border border-border bg-card p-6">
+        <div className="mb-6 rounded-2xl border border-border bg-background/70 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <History className="h-4 w-4 text-primary" />
+              <div>
+                <div className="text-sm font-medium text-foreground">Мои бронирования</div>
+                <div className="text-xs text-muted-foreground">
+                  История сохраняется в cookies этого браузера
+                </div>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => setShowHistory((prev) => !prev)}
+            >
+              {showHistory ? "Скрыть" : "Показать"}
+            </Button>
+          </div>
+
+          {showHistory && (
+            <div className="mt-4 space-y-3">
+              {reservationHistory.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+                  В этом браузере пока нет сохранённых бронирований.
+                </div>
+              ) : (
+                reservationHistory.map((item) => (
+                  <div key={item.id} className="rounded-xl border border-border bg-card p-4 text-sm">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="font-medium text-foreground">
+                          {item.firstName} {item.lastName}
+                        </div>
+                        <div className="text-muted-foreground">
+                          {item.date} • {item.time}
+                        </div>
+                        <div className="text-muted-foreground">{item.phone}</div>
+                        {item.email && <div className="text-muted-foreground">{item.email}</div>}
+                      </div>
+                      <div className="text-left sm:text-right">
+                        <div className="font-medium text-foreground">#{item.id}</div>
+                        <div className="text-muted-foreground">
+                          {item.status === "confirmed"
+                            ? "Подтверждена"
+                            : item.status === "pending"
+                              ? "Ожидает подтверждения"
+                              : item.status === "cancelled"
+                                ? "Отменена"
+                                : "Статус неизвестен"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
