@@ -38,6 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
+import { partySizeOptions, setCountOptions } from "@/lib/booking-limits"
 import type { Booking, ScheduleDay, Table } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 
@@ -368,8 +369,8 @@ export function BookingModal({
                       <SelectValue placeholder="Кол-во" />
                     </SelectTrigger>
                     <SelectContent>
-                      {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                      {partySizeOptions.map((n) => (
+                        <SelectItem key={n} value={n}>{n}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -381,8 +382,8 @@ export function BookingModal({
                       <SelectValue placeholder="Кол-во" />
                     </SelectTrigger>
                     <SelectContent>
-                      {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                      {setCountOptions.map((n) => (
+                        <SelectItem key={n} value={n}>{n}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

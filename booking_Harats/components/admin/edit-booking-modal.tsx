@@ -38,6 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
+import { partySizeOptions, setCountOptions } from "@/lib/booking-limits"
 import type { Booking } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 import { ReservationStatusBadge } from "@/components/admin/reservation-status-badge"
@@ -248,8 +249,8 @@ export function EditBookingModal({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                    {partySizeOptions.map((n) => (
+                      <SelectItem key={n} value={n}>{n}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -261,8 +262,8 @@ export function EditBookingModal({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                      <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                    {setCountOptions.map((n) => (
+                      <SelectItem key={n} value={n}>{n}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

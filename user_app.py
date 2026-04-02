@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from booking_service import (
+    MAX_PARTY_SIZE,
     build_customer_name,
     combine_date_time,
     create_reservation,
@@ -25,8 +26,10 @@ def health():
 def availability():
     date_value = request.args.get("date")
     guests = request.args.get("guests", type=int)
-    if not date_value or not guests or guests <= 0:
-        return jsonify({"error": "date (YYYY-MM-DD) and guests (>0) are required"}), 400
+    if not date_value or not guests or guests <= 0 or guests > MAX_PARTY_SIZE:
+        return jsonify(
+            {"error": f"date (YYYY-MM-DD) and guests (1–{MAX_PARTY_SIZE}) are required"}
+        ), 400
 
     result = get_slots_for_day(date_value, guests)
     return jsonify(
