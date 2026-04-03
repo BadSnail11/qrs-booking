@@ -40,7 +40,13 @@ import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { CalendarIcon, Check, Users, User, Phone, UtensilsCrossed, Timer, Mail, AlertTriangle, History } from "lucide-react"
 import { userApi } from "@/lib/api"
-import { MAX_PARTY_SIZE, MAX_SETS, partySizeOptions, setCountOptions } from "@/lib/booking-limits"
+import {
+  MAX_PARTY_SIZE,
+  MAX_SETS,
+  isDateInSetsChoiceRange,
+  partySizeOptions,
+  setCountOptions,
+} from "@/lib/booking-limits"
 const USER_BOOKING_DRAFT_KEY = "qrs-user-booking-draft"
 const USER_BOOKING_HISTORY_COOKIE = "qrs-user-booking-history"
 const USER_BOOKING_HISTORY_LIMIT = 10
@@ -176,6 +182,10 @@ export function BookingForm() {
   })
 
   const dateValue = useMemo(() => (date ? format(date, "yyyy-MM-dd") : ""), [date])
+  const isSetsChoiceAllowed = useMemo(
+    () => Boolean(date && isDateInSetsChoiceRange(date)),
+    [date]
+  )
   const isReadyForTimeSelection = useMemo(
     () =>
       Boolean(
@@ -184,10 +194,19 @@ export function BookingForm() {
           !getPhoneError(formData.phone) &&
           !getEmailError(formData.email) &&
           formData.guests &&
-          formData.set &&
+          (isSetsChoiceAllowed ? Boolean(formData.set) : true) &&
           date
       ),
-    [formData.firstName, formData.lastName, formData.phone, formData.email, formData.guests, formData.set, date]
+    [
+      formData.firstName,
+      formData.lastName,
+      formData.phone,
+      formData.email,
+      formData.guests,
+      formData.set,
+      date,
+      isSetsChoiceAllowed,
+    ]
   )
   const automaticSlots = useMemo(
     () => availableSlots.filter((slot) => slot.confirmation_mode === "automatic"),
@@ -217,11 +236,13 @@ export function BookingForm() {
       const g = parseInt(draft.formData.guests, 10)
       const guestsRestored =
         Number.isFinite(g) && g >= 1 && g <= MAX_PARTY_SIZE ? String(g) : ""
+      const restoredDate = draft.date ? new Date(`${draft.date}T00:00:00`) : undefined
+      const draftInSetsRange = restoredDate ? isDateInSetsChoiceRange(restoredDate) : false
       const s = parseInt(draft.formData.set, 10)
-      const setRestored = Number.isFinite(s) && s >= 1 && s <= MAX_SETS ? String(s) : ""
+      const setRestored =
+        draftInSetsRange && Number.isFinite(s) && s >= 1 && s <= MAX_SETS ? String(s) : ""
       setFormData({ ...draft.formData, guests: guestsRestored, set: setRestored })
-      if (draft.date) {
-        const restoredDate = new Date(`${draft.date}T00:00:00`)
+      if (draft.date && restoredDate) {
         setDate(restoredDate)
         if (guestsRestored) {
           void loadAvailability(restoredDate, guestsRestored)
@@ -240,6 +261,19 @@ export function BookingForm() {
     }
     window.localStorage.setItem(USER_BOOKING_DRAFT_KEY, JSON.stringify(draft))
   }, [date, formData, isSubmitted])
+
+  useEffect(() => {
+    if (!date) return
+    if (!isDateInSetsChoiceRange(date)) {
+      setFormData((prev) => (prev.set ? { ...prev, set: "" } : prev))
+      setFieldErrors((prev) => {
+        if (!prev.set) return prev
+        const next = { ...prev }
+        delete next.set
+        return next
+      })
+    }
+  }, [date])
 
   const clearFieldError = (field: FieldKey) => {
     setFieldErrors((prev) => {
@@ -275,12 +309,14 @@ export function BookingForm() {
         e.guests = `Максимум ${MAX_PARTY_SIZE} гостей.`
       }
     }
-    if (!formData.set) {
-      e.set = "Выберите количество сетов."
-    } else {
-      const s = parseInt(formData.set, 10)
-      if (!Number.isFinite(s) || s < 1 || s > MAX_SETS) {
-        e.set = `Максимум ${MAX_SETS} сетов.`
+    if (date && isDateInSetsChoiceRange(date)) {
+      if (!formData.set) {
+        e.set = "Выберите количество сетов."
+      } else {
+        const s = parseInt(formData.set, 10)
+        if (!Number.isFinite(s) || s < 1 || s > MAX_SETS) {
+          e.set = `Максимум ${MAX_SETS} сетов.`
+        }
       }
     }
     if (!date) e.date = "Выберите дату."
@@ -342,13 +378,15 @@ export function BookingForm() {
 
     setIsLoading(true)
     try {
+      const setsPayload =
+        date && isDateInSetsChoiceRange(date) ? parseInt(formData.set, 10) : 1
       const result = await userApi.createReservation({
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         phone: formData.phone.trim(),
         email: formData.email.trim(),
         guests: parseInt(formData.guests, 10),
-        sets: parseInt(formData.set, 10),
+        sets: setsPayload,
         date: dateValue,
         time: formData.time,
       })
@@ -360,7 +398,7 @@ export function BookingForm() {
       setReservationDetails({
         ...reservation,
         guests: reservation.guests ?? parseInt(formData.guests, 10),
-        sets: reservation.sets ?? parseInt(formData.set, 10),
+        sets: reservation.sets ?? setsPayload,
       })
       setIsSubmitted(true)
       setShowManualConfirmation(false)
@@ -373,7 +411,7 @@ export function BookingForm() {
         date: reservation.date,
         time: reservation.time,
         guests: parseInt(formData.guests, 10),
-        sets: parseInt(formData.set, 10),
+        sets: setsPayload,
         status: reservation.status || "unknown",
         createdAt: new Date().toISOString(),
       }
@@ -452,7 +490,13 @@ export function BookingForm() {
             {reservationDetails.guests != null && (
               <div>Гостей: {reservationDetails.guests}</div>
             )}
-            {reservationDetails.sets != null && <div>Сетов: {reservationDetails.sets}</div>}
+            {reservationDetails.date &&
+              isDateInSetsChoiceRange(new Date(`${reservationDetails.date}T12:00:00`)) &&
+              reservationDetails.sets != null && <div>Сетов: {reservationDetails.sets}</div>}
+            {reservationDetails.date &&
+              !isDateInSetsChoiceRange(new Date(`${reservationDetails.date}T12:00:00`)) && (
+                <div className="text-muted-foreground">Без выбора сетов на эту дату</div>
+              )}
           </div>
         )}
         <Button
@@ -509,11 +553,22 @@ export function BookingForm() {
                         </div>
                         <div className="text-muted-foreground">{item.phone}</div>
                         {item.email && <div className="text-muted-foreground">{item.email}</div>}
-                        {(item.guests != null || item.sets != null) && (
+                        {(item.guests != null ||
+                          (item.date &&
+                            item.sets != null &&
+                            isDateInSetsChoiceRange(new Date(`${item.date}T12:00:00`)))) && (
                           <div className="text-muted-foreground">
                             {item.guests != null && <span>Гостей: {item.guests}</span>}
-                            {item.guests != null && item.sets != null && " · "}
-                            {item.sets != null && <span>Сетов: {item.sets}</span>}
+                            {item.guests != null &&
+                              item.date &&
+                              item.sets != null &&
+                              isDateInSetsChoiceRange(new Date(`${item.date}T12:00:00`)) &&
+                              " · "}
+                            {item.date &&
+                              item.sets != null &&
+                              isDateInSetsChoiceRange(new Date(`${item.date}T12:00:00`)) && (
+                                <span>Сетов: {item.sets}</span>
+                              )}
                           </div>
                         )}
                       </div>
@@ -644,7 +699,7 @@ export function BookingForm() {
             <span>Детали бронирования</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className={cn("grid gap-3", isSetsChoiceAllowed ? "grid-cols-2" : "grid-cols-1")}>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">
                 Гости <span className="text-destructive">*</span>
@@ -680,40 +735,51 @@ export function BookingForm() {
               {fieldErrors.guests && <p className="text-xs text-destructive">{fieldErrors.guests}</p>}
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">
-                Сеты <span className="text-destructive">*</span>
-              </Label>
-              <Select
-                value={formData.set}
-                onValueChange={(value) => {
-                  clearFieldError("set")
-                  handleInputChange("set", value)
-                }}
-              >
-                <SelectTrigger
-                  className={cn(
-                    "h-12 rounded-xl border bg-background text-base",
-                    fieldErrors.set ? "border-destructive ring-1 ring-destructive/40" : "border-border"
-                  )}
-                  aria-invalid={Boolean(fieldErrors.set)}
+            {isSetsChoiceAllowed && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">
+                  Сеты <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={formData.set}
+                  onValueChange={(value) => {
+                    clearFieldError("set")
+                    handleInputChange("set", value)
+                  }}
                 >
-                  <div className="flex items-center gap-2">
-                    <UtensilsCrossed className="h-4 w-4 text-muted-foreground/50" />
-                    <SelectValue placeholder="Кол-во" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {setCountOptions.map((num) => (
-                    <SelectItem key={num} value={num} className="text-base">
-                      {num}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {fieldErrors.set && <p className="text-xs text-destructive">{fieldErrors.set}</p>}
-            </div>
+                  <SelectTrigger
+                    className={cn(
+                      "h-12 rounded-xl border bg-background text-base",
+                      fieldErrors.set ? "border-destructive ring-1 ring-destructive/40" : "border-border"
+                    )}
+                    aria-invalid={Boolean(fieldErrors.set)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <UtensilsCrossed className="h-4 w-4 text-muted-foreground/50" />
+                      <SelectValue placeholder="Кол-во" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {setCountOptions.map((num) => (
+                      <SelectItem key={num} value={num} className="text-base">
+                        {num}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {fieldErrors.set && <p className="text-xs text-destructive">{fieldErrors.set}</p>}
+              </div>
+            )}
           </div>
+          {date && !isSetsChoiceAllowed && (
+            <p className="flex items-start gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              <UtensilsCrossed className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                На выбранную дату бронирование без меню сетов. Выбор количества сетов доступен с 9 апреля 2026 по
+                26 апреля 2036 г.
+              </span>
+            </p>
+          )}
 
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">
@@ -742,7 +808,12 @@ export function BookingForm() {
                   onSelect={(value) => {
                     clearFieldError("date")
                     setDate(value)
-                    setFormData((prev) => ({ ...prev, time: "" }))
+                    const inSetsRange = value ? isDateInSetsChoiceRange(value) : false
+                    setFormData((prev) => ({
+                      ...prev,
+                      time: "",
+                      set: inSetsRange ? prev.set : "",
+                    }))
                     void loadAvailability(value, formData.guests)
                   }}
                   locale={ru}
@@ -924,8 +995,10 @@ export function BookingForm() {
                     <dd className="text-right font-medium">{formData.guests}</dd>
                   </div>
                   <div className="flex justify-between gap-4">
-                    <dt className="text-muted-foreground">Сетов</dt>
-                    <dd className="text-right font-medium">{formData.set}</dd>
+                    <dt className="text-muted-foreground">Сеты</dt>
+                    <dd className="text-right font-medium">
+                      {isSetsChoiceAllowed ? formData.set : "без выбора (не в периоде меню)"}
+                    </dd>
                   </div>
                 </dl>
               </div>
