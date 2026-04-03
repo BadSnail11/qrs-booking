@@ -5,6 +5,8 @@ from urllib import error, parse, request
 
 from db import execute, execute_returning, query_all
 
+from booking_service import format_sets_display
+
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 ADMIN_WEB_URL = os.getenv("ADMIN_WEB_URL", "http://localhost:3000/admin").rstrip("/")
@@ -147,7 +149,7 @@ def notify_pending_reservation(reservation):
         f"Дата: {escape(str(reservation['date']))}",
         f"Время: {escape(str(reservation['time']))} - {escape(str(reservation['endTime']))}",
         f"Гостей: {reservation['guests']}",
-        f"Сетов: {reservation.get('sets', 1)}",
+        f"Сетов: {format_sets_display(reservation.get('sets'))}",
         f"Столы: {escape(table_label)}",
         f"Комментарий: {escape(str(reservation.get('note') or '-'))}",
     ]

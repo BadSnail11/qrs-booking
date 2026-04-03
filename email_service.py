@@ -5,6 +5,8 @@ import resend
 
 from db import query_all
 
+from booking_service import format_sets_display
+
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "").strip()
@@ -48,7 +50,7 @@ def _render_email_html(title, intro, reservation):
         <p><strong>Дата:</strong> {reservation["date"]}</p>
         <p><strong>Время:</strong> {reservation["time"]} - {reservation["endTime"]}</p>
         <p><strong>Гостей:</strong> {reservation["guests"]}</p>
-        <p><strong>Сетов:</strong> {reservation.get("sets", 1)}</p>
+        <p><strong>Сетов:</strong> {format_sets_display(reservation.get("sets"))}</p>
         <p><strong>Стол:</strong> {_table_label(reservation)}</p>
         <p><strong>Комментарий:</strong> {reservation.get("note") or "-"}</p>
       </div>

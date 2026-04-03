@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS reservations (
     customer_name TEXT NOT NULL,
     reservation_time TIMESTAMP NOT NULL,
     guests INTEGER NOT NULL DEFAULT 1 CHECK (guests > 0),
-    sets INTEGER NOT NULL DEFAULT 1 CHECK (sets > 0),
+    sets INTEGER NOT NULL DEFAULT 1 CHECK (sets >= 0 AND sets <= 15),
     email TEXT,
     phone TEXT,
     note TEXT,

@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
-import { partySizeOptions, setCountOptions } from "@/lib/booking-limits"
+import { adminSetSelectItems, partySizeOptions } from "@/lib/booking-limits"
 
 type TableOption = {
   key: string
@@ -438,8 +438,10 @@ export function AdminCreateReservationPageClient({
                         </div>
                       </SelectTrigger>
                       <SelectContent>
-                        {setCountOptions.map((value) => (
-                          <SelectItem key={value} value={value}>{value}</SelectItem>
+                        {adminSetSelectItems.map(({ value, label }) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

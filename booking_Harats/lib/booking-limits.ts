@@ -21,3 +21,27 @@ export function isDateInSetsChoiceRange(d: Date): boolean {
   const ymd = toYmdLocal(d)
   return ymd >= SETS_CHOICE_FIRST && ymd <= SETS_CHOICE_LAST
 }
+
+/** Form select value for «Без сетов». API stores `sets: 0`. */
+export const SETS_FORM_NONE = "none"
+
+/** Admin / display: 0 = «Без сетов», otherwise the count. */
+export function formatSetsLabel(sets: number): string {
+  if (sets === 0) return "Без сетов"
+  return String(sets)
+}
+
+/** Admin booking forms: value `0` is «Без сетов», then 1…MAX_SETS. */
+export const adminSetSelectItems: { value: string; label: string }[] = [
+  { value: "0", label: "Без сетов" },
+  ...setCountOptions.map((n) => ({ value: n, label: n })),
+]
+
+/** Maps public form sets field to API integer (0 = без сетов, 1…MAX_SETS). */
+export function setsFormValueToApi(setFormValue: string, date: Date | undefined): number {
+  if (!date || !isDateInSetsChoiceRange(date)) return 0
+  if (setFormValue === SETS_FORM_NONE) return 0
+  const n = parseInt(setFormValue, 10)
+  if (!Number.isFinite(n) || n < 1 || n > MAX_SETS) return 1
+  return n
+}

@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import type { Booking } from "@/app/admin/page"
+import { formatSetsLabel } from "@/lib/booking-limits"
 import { adminApi } from "@/lib/api"
 
 interface AnalyticsModalProps {
@@ -116,7 +117,7 @@ export function AnalyticsModal({
       "Дата": b.date,
       "Время": `${b.time} - ${b.endTime}`,
       "Гости": b.guests,
-      "Сеты": b.sets,
+      "Сеты": formatSetsLabel(b.sets),
       "Стол": b.tableId,
       "Статус": b.status,
       "Примечание": b.note || "",

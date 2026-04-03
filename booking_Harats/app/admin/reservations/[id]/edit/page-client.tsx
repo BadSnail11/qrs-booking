@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
-import { partySizeOptions, setCountOptions } from "@/lib/booking-limits"
+import { adminSetSelectItems, partySizeOptions } from "@/lib/booking-limits"
 import { ReservationStatusBadge } from "@/components/admin/reservation-status-badge"
 
 const timeSlots = [
@@ -447,8 +447,10 @@ export function AdminEditReservationPageClient({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {setCountOptions.map((n) => (
-                              <SelectItem key={n} value={n}>{n}</SelectItem>
+                            {adminSetSelectItems.map(({ value, label }) => (
+                              <SelectItem key={value} value={value}>
+                                {label}
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>

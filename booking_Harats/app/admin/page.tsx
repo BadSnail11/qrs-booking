@@ -12,6 +12,7 @@ import { TablesGrid } from "@/components/admin/tables-grid"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { adminApi } from "@/lib/api"
+import { formatSetsLabel } from "@/lib/booking-limits"
 import { cn } from "@/lib/utils"
 
 export type Booking = {
@@ -433,7 +434,7 @@ export default function AdminPage() {
                           {booking.date} • {booking.time} - {booking.endTime}
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">
-                          {getTableLabel(booking)} • {booking.guests} гостей
+                          {getTableLabel(booking)} • {booking.guests} гостей • {formatSetsLabel(booking.sets)}
                         </div>
                       </div>
                       <div className="text-sm text-muted-foreground">

@@ -19,6 +19,19 @@ MAX_EXTRA_SEATS = int(os.getenv("MAX_EXTRA_SEATS", "2"))
 MAX_PARTY_SIZE = 15
 MAX_SETS = 15
 logger = logging.getLogger(__name__)
+
+
+def format_sets_display(sets):
+    """Human-readable sets for email/Telegram (0 = «Без сетов»)."""
+    if sets is None:
+        return "1"
+    try:
+        n = int(sets)
+    except (TypeError, ValueError):
+        return "1"
+    if n == 0:
+        return "Без сетов"
+    return str(n)
 WEEKDAY_NAMES = [
     "monday",
     "tuesday",
@@ -392,8 +405,8 @@ def create_reservation(
     sets = int(sets) if sets is not None else 1
     if guests < 1 or guests > MAX_PARTY_SIZE:
         raise ValueError(f"guests must be between 1 and {MAX_PARTY_SIZE}")
-    if sets < 1 or sets > MAX_SETS:
-        raise ValueError(f"sets must be between 1 and {MAX_SETS}")
+    if sets < 0 or sets > MAX_SETS:
+        raise ValueError(f"sets must be between 0 and {MAX_SETS}")
     if table_ids:
         issues = validate_table_selection(table_ids, guests, reservation_time)
         if (
@@ -566,8 +579,8 @@ def update_reservation(reservation_id, updates, force=False, allow_insufficient_
     new_sets = int(updates.get("sets", current["sets"]))
     if new_guests < 1 or new_guests > MAX_PARTY_SIZE:
         raise ValueError(f"guests must be between 1 and {MAX_PARTY_SIZE}")
-    if new_sets < 1 or new_sets > MAX_SETS:
-        raise ValueError(f"sets must be between 1 and {MAX_SETS}")
+    if new_sets < 0 or new_sets > MAX_SETS:
+        raise ValueError(f"sets must be between 0 and {MAX_SETS}")
     new_email = updates.get("email", current["email"])
     new_phone = updates.get("phone", current["phone"])
     new_note = updates.get("note", current["note"])
