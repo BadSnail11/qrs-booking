@@ -707,94 +707,39 @@ export function BookingForm() {
             <span>Детали бронирования</span>
           </div>
 
-          <div className={cn("grid gap-3", date ? "grid-cols-2" : "grid-cols-1")}>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">
-                Гости <span className="text-destructive">*</span>
-              </Label>
-              <Select
-                value={formData.guests}
-                onValueChange={(value) => {
-                  clearFieldError("guests")
-                  setFormData((prev) => ({ ...prev, guests: value, time: "" }))
-                  void loadAvailability(date, value)
-                }}
-              >
-                <SelectTrigger
-                  className={cn(
-                    "h-12 rounded-xl border bg-background text-base",
-                    fieldErrors.guests ? "border-destructive ring-1 ring-destructive/40" : "border-border"
-                  )}
-                  aria-invalid={Boolean(fieldErrors.guests)}
-                >
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-muted-foreground/50" />
-                    <SelectValue placeholder="Кол-во" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {partySizeOptions.map((num) => (
-                    <SelectItem key={num} value={num} className="text-base">
-                      {num}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {fieldErrors.guests && <p className="text-xs text-destructive">{fieldErrors.guests}</p>}
-            </div>
-
-            {date && (
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">
-                  Сеты <span className="text-destructive">*</span>
-                </Label>
-                <Select
-                  value={formData.set}
-                  onValueChange={(value) => {
-                    clearFieldError("set")
-                    handleInputChange("set", value)
-                  }}
-                  disabled={!isSetsChoiceAllowed}
-                >
-                  <SelectTrigger
-                    className={cn(
-                      "h-12 rounded-xl border bg-background text-base",
-                      fieldErrors.set ? "border-destructive ring-1 ring-destructive/40" : "border-border"
-                    )}
-                    aria-invalid={Boolean(fieldErrors.set)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <UtensilsCrossed className="h-4 w-4 text-muted-foreground/50" />
-                      <SelectValue placeholder="Выберите" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isSetsChoiceAllowed ? (
-                      <>
-                        <SelectItem value={SETS_FORM_NONE} className="text-base">
-                          Без сетов
-                        </SelectItem>
-                        {setCountOptions.map((num) => (
-                          <SelectItem key={num} value={num} className="text-base">
-                            {num}
-                          </SelectItem>
-                        ))}
-                      </>
-                    ) : (
-                      <SelectItem value={SETS_FORM_NONE} className="text-base">
-                        Без сетов
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-                {fieldErrors.set && <p className="text-xs text-destructive">{fieldErrors.set}</p>}
-                {date && !isSetsChoiceAllowed && (
-                  <p className="text-xs text-muted-foreground">
-                    Вне периода 9 апреля 2026 — 26 апреля 2026 г. доступен только вариант «Без сетов».
-                  </p>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">
+              Гости <span className="text-destructive">*</span>
+            </Label>
+            <Select
+              value={formData.guests}
+              onValueChange={(value) => {
+                clearFieldError("guests")
+                setFormData((prev) => ({ ...prev, guests: value, time: "" }))
+                void loadAvailability(date, value)
+              }}
+            >
+              <SelectTrigger
+                className={cn(
+                  "h-12 rounded-xl border bg-background text-base",
+                  fieldErrors.guests ? "border-destructive ring-1 ring-destructive/40" : "border-border"
                 )}
-              </div>
-            )}
+                aria-invalid={Boolean(fieldErrors.guests)}
+              >
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground/50" />
+                  <SelectValue placeholder="Кол-во" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {partySizeOptions.map((num) => (
+                  <SelectItem key={num} value={num} className="text-base">
+                    {num}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {fieldErrors.guests && <p className="text-xs text-destructive">{fieldErrors.guests}</p>}
           </div>
 
           <div className="space-y-1.5">
@@ -851,6 +796,59 @@ export function BookingForm() {
             {fieldErrors.date && <p className="text-xs text-destructive">{fieldErrors.date}</p>}
           </div>
 
+          {date && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">
+                Сеты <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={formData.set}
+                onValueChange={(value) => {
+                  clearFieldError("set")
+                  handleInputChange("set", value)
+                }}
+                disabled={!isSetsChoiceAllowed}
+              >
+                <SelectTrigger
+                  className={cn(
+                    "h-12 rounded-xl border bg-background text-base",
+                    fieldErrors.set ? "border-destructive ring-1 ring-destructive/40" : "border-border"
+                  )}
+                  aria-invalid={Boolean(fieldErrors.set)}
+                >
+                  <div className="flex items-center gap-2">
+                    <UtensilsCrossed className="h-4 w-4 text-muted-foreground/50" />
+                    <SelectValue placeholder="Выберите" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {isSetsChoiceAllowed ? (
+                    <>
+                      <SelectItem value={SETS_FORM_NONE} className="text-base">
+                        Без сетов
+                      </SelectItem>
+                      {setCountOptions.map((num) => (
+                        <SelectItem key={num} value={num} className="text-base">
+                          {num}
+                        </SelectItem>
+                      ))}
+                    </>
+                  ) : (
+                    <SelectItem value={SETS_FORM_NONE} className="text-base">
+                      Без сетов
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              {fieldErrors.set && <p className="text-xs text-destructive">{fieldErrors.set}</p>}
+              {date && !isSetsChoiceAllowed && (
+                <p className="text-xs text-muted-foreground">
+                  Количество сетов можно выбрать в период с 9 апреля 2026 по 26 апреля 2026 г.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label className="text-xs text-muted-foreground">
@@ -868,7 +866,7 @@ export function BookingForm() {
                   fieldErrors.time ? "border-destructive ring-1 ring-destructive/40" : "border-border"
                 )}
               >
-                Заполните все поля выше (имя, фамилия, телефон, email, гости, сеты и дату), чтобы увидеть доступное время.
+                Заполните все поля выше (имя, фамилия, телефон, email, гости, дату и сеты), чтобы увидеть доступное время.
               </div>
             ) : isAvailabilityLoading ? (
               <div
