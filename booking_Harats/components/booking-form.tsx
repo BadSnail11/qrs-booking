@@ -790,7 +790,7 @@ export function BookingForm() {
                 {fieldErrors.set && <p className="text-xs text-destructive">{fieldErrors.set}</p>}
                 {date && !isSetsChoiceAllowed && (
                   <p className="text-xs text-muted-foreground">
-                    Вне периода 9 апреля 2026 — 26 апреля 2036 г. доступен только вариант «Без сетов».
+                    Вне периода 9 апреля 2026 — 26 апреля 2026 г. доступен только вариант «Без сетов».
                   </p>
                 )}
               </div>
