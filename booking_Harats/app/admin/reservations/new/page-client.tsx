@@ -380,8 +380,8 @@ export function AdminCreateReservationPageClient({
                     <Input id="firstName" value={formData.firstName} onChange={(e) => handleInputChange("firstName", e.target.value)} placeholder="Иван" required className="h-12 rounded-xl" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="lastName">Фамилия</Label>
-                    <Input id="lastName" value={formData.lastName} onChange={(e) => handleInputChange("lastName", e.target.value)} placeholder="Иванов" required className="h-12 rounded-xl" />
+                    <Label htmlFor="lastName">Фамилия (необязательно)</Label>
+                    <Input id="lastName" value={formData.lastName} onChange={(e) => handleInputChange("lastName", e.target.value)} placeholder="Иванов" className="h-12 rounded-xl" />
                   </div>
                 </div>
 

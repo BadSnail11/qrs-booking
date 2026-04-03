@@ -410,7 +410,7 @@ export function AdminEditReservationPageClient({
                         <Input value={formData.firstName} onChange={(e) => handleInputChange("firstName", e.target.value)} />
                       </div>
                       <div className="space-y-2">
-                        <Label>Фамилия</Label>
+                        <Label>Фамилия (необязательно)</Label>
                         <Input value={formData.lastName} onChange={(e) => handleInputChange("lastName", e.target.value)} />
                       </div>
                     </div>
