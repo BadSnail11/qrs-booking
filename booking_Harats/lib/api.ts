@@ -61,8 +61,22 @@ async function userRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
+export type PublicRestaurant = {
+  slug: string
+  displayName: string
+  menuUrl: string | null
+}
+
 export const userApi = {
-  getAvailability(date: string, guests: number) {
+  listRestaurants() {
+    return userRequest<PublicRestaurant[]>("/v1/restaurants")
+  },
+  getAvailability(date: string, guests: number, restaurantSlug: string) {
+    const q = new URLSearchParams({
+      date,
+      guests: String(guests),
+      restaurant: restaurantSlug,
+    })
     return userRequest<{
       date: string
       guests: number
@@ -73,7 +87,7 @@ export const userApi = {
         suggested_table_ids: number[]
         confirmation_mode?: "automatic" | "manual" | null
       }>
-    }>(`/v1/availability?date=${encodeURIComponent(date)}&guests=${guests}`)
+    }>(`/v1/availability?${q.toString()}`)
   },
   createReservation(body: Record<string, unknown>) {
     return userRequest<{ message: string; reservation: Record<string, unknown> }>("/v1/reservations", {
@@ -98,6 +112,33 @@ export const adminApi = {
   },
   deleteTelegramRecipient(id: number) {
     return request<{ message: string }>(ADMIN_API_URL, `/v1/settings/telegram-recipients/${id}`, {
+      method: "DELETE",
+    })
+  },
+  getMenuSettings() {
+    return request<{ hasMenu: boolean; menuUrl: string | null }>(ADMIN_API_URL, "/v1/settings/menu")
+  },
+  uploadMenuPdf(file: File) {
+    const fd = new FormData()
+    fd.append("file", file)
+    return fetch(`${ADMIN_API_URL}/v1/settings/menu`, {
+      method: "POST",
+      body: fd,
+    }).then(async (res) => {
+      const isJson = res.headers.get("content-type")?.includes("application/json")
+      const payload = isJson ? await res.json() : await res.text()
+      if (!res.ok) {
+        const message =
+          typeof payload === "object" && payload && "error" in payload
+            ? String((payload as { error: string }).error)
+            : `Request failed with ${res.status}`
+        throw new Error(message)
+      }
+      return payload as { menuUrl: string; hasMenu: boolean }
+    })
+  },
+  deleteMenuPdf() {
+    return request<{ hasMenu: boolean }>(ADMIN_API_URL, "/v1/settings/menu", {
       method: "DELETE",
     })
   },
@@ -192,5 +233,20 @@ export const adminApi = {
   },
   getAnalytics(params: URLSearchParams) {
     return request<Record<string, unknown>>(ADMIN_API_URL, `/v1/analytics/reservations?${params.toString()}`)
+  },
+  listSuperRestaurants() {
+    return request<Array<Record<string, unknown>>>(ADMIN_API_URL, "/v1/super/restaurants")
+  },
+  createSuperRestaurant(body: Record<string, unknown>) {
+    return request<Record<string, unknown>>(ADMIN_API_URL, "/v1/super/restaurants", {
+      method: "POST",
+      body: JSON.stringify(body),
+    })
+  },
+  updateSuperRestaurant(id: number, body: Record<string, unknown>) {
+    return request<Record<string, unknown>>(ADMIN_API_URL, `/v1/super/restaurants/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    })
   },
 }

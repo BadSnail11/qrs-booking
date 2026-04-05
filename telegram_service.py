@@ -4,6 +4,7 @@ from html import escape
 from urllib import error, parse, request
 
 from db import execute, execute_returning, query_all
+from request_context import get_restaurant_id
 
 from booking_service import format_sets_display
 
@@ -27,8 +28,10 @@ def list_telegram_recipients():
         """
         SELECT id, chat_id, label, is_active, created_at
         FROM telegram_recipients
+        WHERE restaurant_id = %s
         ORDER BY is_active DESC, created_at ASC, id ASC
-        """
+        """,
+        (get_restaurant_id(),),
     )
     return [serialize_telegram_recipient(row) for row in rows]
 
@@ -38,11 +41,16 @@ def add_telegram_recipient(chat_id, label=None, is_active=True):
         raise ValueError("chat_id is required")
     row = execute_returning(
         """
-        INSERT INTO telegram_recipients (chat_id, label, is_active)
-        VALUES (%s, %s, %s)
+        INSERT INTO telegram_recipients (restaurant_id, chat_id, label, is_active)
+        VALUES (%s, %s, %s, %s)
         RETURNING id, chat_id, label, is_active, created_at
         """,
-        (str(chat_id).strip(), (label or "").strip() or None, bool(is_active)),
+        (
+            get_restaurant_id(),
+            str(chat_id).strip(),
+            (label or "").strip() or None,
+            bool(is_active),
+        ),
     )
     return serialize_telegram_recipient(row)
 
@@ -51,10 +59,10 @@ def delete_telegram_recipient(recipient_id):
     return execute_returning(
         """
         DELETE FROM telegram_recipients
-        WHERE id = %s
+        WHERE id = %s AND restaurant_id = %s
         RETURNING id
         """,
-        (recipient_id,),
+        (recipient_id, get_restaurant_id()),
     )
 
 
@@ -109,13 +117,17 @@ def _delete_telegram_message(chat_id, message_id):
 
 
 def notify_pending_reservation(reservation):
+    rid = reservation.get("restaurantId") or reservation.get("restaurant_id")
+    if rid is None:
+        return {"enabled": bool(TELEGRAM_BOT_TOKEN), "sent": 0}
     recipients = query_all(
         """
         SELECT chat_id
         FROM telegram_recipients
-        WHERE is_active = TRUE
+        WHERE restaurant_id = %s AND is_active = TRUE
         ORDER BY id ASC
-        """
+        """,
+        (int(rid),),
     )
     if not recipients:
         return {"enabled": bool(TELEGRAM_BOT_TOKEN), "sent": 0}

@@ -13,10 +13,6 @@ const nextConfig = {
         destination: "http://user-app:8000/api/:path*",
       },
       {
-        source: "/api/admin/:path*",
-        destination: "http://admin-app:8001/api/:path*",
-      },
-      {
         source: "/health/user",
         destination: "http://user-app:8000/health",
       },

@@ -3,6 +3,7 @@
 import { format, addDays } from "date-fns"
 import { ru } from "date-fns/locale"
 import { Search, CalendarIcon, ChevronLeft, ChevronRight, BarChart3, Menu, Settings } from "lucide-react"
+import { AdminLogoutButton } from "@/components/admin/admin-logout-button"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -30,6 +31,8 @@ interface AdminHeaderProps {
   onAnalyticsClick: () => void
   onSettingsClick: () => void
   onToggleSidebar?: () => void
+  /** Shown next to the app name (restaurant display name from session) */
+  venueTitle?: string
 }
 
 export function AdminHeader({
@@ -44,6 +47,7 @@ export function AdminHeader({
   onAnalyticsClick,
   onSettingsClick,
   onToggleSidebar,
+  venueTitle,
 }: AdminHeaderProps) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekAnchor, i - 3))
 
@@ -63,11 +67,15 @@ export function AdminHeader({
           </Button>
           
           <h1 className="text-xl font-semibold lg:text-2xl">
-            <span className="text-muted-foreground">Harat's Tables</span>
+            <span className="text-muted-foreground">
+              {venueTitle ? `${venueTitle} · бронирование` : "Админка бронирований"}
+            </span>
           </h1>
         </div>
         
         <div className="flex items-center gap-2">
+          <AdminLogoutButton className="hidden sm:flex" />
+          <AdminLogoutButton size="icon" compact className="sm:hidden" />
           <Button
             variant="outline"
             size="sm"

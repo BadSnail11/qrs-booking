@@ -5,6 +5,7 @@ import Link from "next/link"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { ArrowLeft, CalendarIcon, AlertTriangle, Users, X, Check, Phone, Mail, MessageSquare, UtensilsCrossed, Timer } from "lucide-react"
+import { AdminLogoutButton } from "@/components/admin/admin-logout-button"
 import type { Booking, ScheduleDay, Table } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -345,7 +346,7 @@ export function AdminCreateReservationPageClient({
     <>
       <div className="min-h-screen bg-muted/30">
         <div className="border-b bg-card">
-          <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 lg:px-6">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4 lg:px-6">
             <div className="flex items-center gap-3">
               <Button asChild variant="outline" size="icon">
                 <Link href={backHref}>
@@ -357,6 +358,7 @@ export function AdminCreateReservationPageClient({
                 <p className="text-sm text-muted-foreground">Отдельная страница для брони администратора</p>
               </div>
             </div>
+            <AdminLogoutButton className="shrink-0" />
           </div>
         </div>
 

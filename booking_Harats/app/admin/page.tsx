@@ -86,6 +86,16 @@ export default function AdminPage() {
   const [listStatusFilter, setListStatusFilter] = useState<ListStatusFilter>("all")
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false)
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
+  const [venueTitle, setVenueTitle] = useState("")
+
+  useEffect(() => {
+    void fetch("/api/admin/me")
+      .then((r) => r.json())
+      .then((data: { displayName?: string }) => {
+        if (typeof data?.displayName === "string") setVenueTitle(data.displayName)
+      })
+      .catch(() => {})
+  }, [])
 
   const dateStr = useMemo(
     () => format(selectedDate ?? weekAnchor, "yyyy-MM-dd"),
@@ -283,6 +293,7 @@ export default function AdminPage() {
         onAnalyticsClick={() => router.push("/admin/analytics")}
         onSettingsClick={() => router.push("/admin/settings")}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
+        venueTitle={venueTitle}
       />
 
       <div className="border-b border-border bg-card px-4 py-3 lg:px-6">

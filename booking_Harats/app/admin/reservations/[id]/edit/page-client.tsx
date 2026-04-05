@@ -5,6 +5,7 @@ import Link from "next/link"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { ArrowLeft, CalendarIcon, AlertTriangle, Users, X, Check } from "lucide-react"
+import { AdminLogoutButton } from "@/components/admin/admin-logout-button"
 import type { Booking, Table } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -386,7 +387,10 @@ export function AdminEditReservationPageClient({
                 <p className="text-sm text-muted-foreground">Отдельная страница редактирования</p>
               </div>
             </div>
-            {booking && <ReservationStatusBadge status={booking.status} />}
+            <div className="flex shrink-0 items-center gap-2">
+              {booking && <ReservationStatusBadge status={booking.status} />}
+              <AdminLogoutButton />
+            </div>
           </div>
         </div>
 

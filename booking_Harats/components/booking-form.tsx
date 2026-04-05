@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -79,6 +80,7 @@ type AvailabilitySlot = {
 }
 
 type UserBookingDraft = {
+  restaurantSlug?: string | null
   date: string | null
   formData: {
     firstName: string
@@ -142,6 +144,12 @@ function saveReservationHistory(items: UserBookingHistoryItem[]) {
 
 type FieldKey = "firstName" | "lastName" | "phone" | "email" | "guests" | "set" | "date" | "time"
 
+type SlugStatus = "loading" | "ok" | "invalid" | "error"
+
+export type BookingFormProps = {
+  restaurantSlug: string
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
 function getPhoneError(phone: string): string | null {
@@ -160,7 +168,11 @@ function getEmailError(email: string): string | null {
   return null
 }
 
-export function BookingForm() {
+export function BookingForm({ restaurantSlug }: BookingFormProps) {
+  const [slugStatus, setSlugStatus] = useState<SlugStatus>("loading")
+  const [restaurantDisplayName, setRestaurantDisplayName] = useState("")
+  const [slugCheckRetryKey, setSlugCheckRetryKey] = useState(0)
+  const draftAppliedForSlug = useRef<string | null>(null)
   const [date, setDate] = useState<Date>()
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -202,7 +214,8 @@ export function BookingForm() {
   const isReadyForTimeSelection = useMemo(
     () =>
       Boolean(
-        formData.firstName.trim() &&
+        restaurantSlug &&
+          formData.firstName.trim() &&
           formData.lastName.trim() &&
           !getPhoneError(formData.phone) &&
           !getEmailError(formData.email) &&
@@ -211,6 +224,7 @@ export function BookingForm() {
           date
       ),
     [
+      restaurantSlug,
       formData.firstName,
       formData.lastName,
       formData.phone,
@@ -239,12 +253,50 @@ export function BookingForm() {
   )
 
   useEffect(() => {
+    draftAppliedForSlug.current = null
+  }, [restaurantSlug])
+
+  useEffect(() => {
+    setSlugStatus("loading")
+    setRestaurantDisplayName("")
+    let cancelled = false
+    void userApi
+      .listRestaurants()
+      .then((rows) => {
+        if (cancelled) return
+        const row = rows.find((r) => r.slug === restaurantSlug)
+        if (!row) {
+          setSlugStatus("invalid")
+          return
+        }
+        setRestaurantDisplayName(row.displayName)
+        setSlugStatus("ok")
+      })
+      .catch(() => {
+        if (cancelled) return
+        setSlugStatus("error")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [restaurantSlug, slugCheckRetryKey])
+
+  useEffect(() => {
     if (typeof window === "undefined") return
+    setReservationHistory(loadReservationHistory())
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || slugStatus !== "ok") return
+    if (draftAppliedForSlug.current === restaurantSlug) return
+    draftAppliedForSlug.current = restaurantSlug
     try {
-      setReservationHistory(loadReservationHistory())
       const rawDraft = window.localStorage.getItem(USER_BOOKING_DRAFT_KEY)
       if (!rawDraft) return
       const draft = JSON.parse(rawDraft) as UserBookingDraft
+      if (draft.restaurantSlug && draft.restaurantSlug !== restaurantSlug) {
+        return
+      }
       const g = parseInt(draft.formData.guests, 10)
       const guestsRestored =
         Number.isFinite(g) && g >= 1 && g <= MAX_PARTY_SIZE ? String(g) : ""
@@ -263,22 +315,23 @@ export function BookingForm() {
       if (draft.date && restoredDate) {
         setDate(restoredDate)
         if (guestsRestored) {
-          void loadAvailability(restoredDate, guestsRestored)
+          void loadAvailability(restoredDate, guestsRestored, restaurantSlug)
         }
       }
     } catch {
       window.localStorage.removeItem(USER_BOOKING_DRAFT_KEY)
     }
-  }, [])
+  }, [slugStatus, restaurantSlug])
 
   useEffect(() => {
     if (typeof window === "undefined" || isSubmitted) return
     const draft: UserBookingDraft = {
+      restaurantSlug: restaurantSlug || null,
       date: date ? format(date, "yyyy-MM-dd") : null,
       formData,
     }
     window.localStorage.setItem(USER_BOOKING_DRAFT_KEY, JSON.stringify(draft))
-  }, [date, formData, isSubmitted])
+  }, [date, formData, isSubmitted, restaurantSlug])
 
   useEffect(() => {
     if (!date) return
@@ -292,6 +345,12 @@ export function BookingForm() {
       })
     }
   }, [date])
+
+  useEffect(() => {
+    if (date && formData.guests && restaurantSlug) {
+      void loadAvailability(date, formData.guests, restaurantSlug)
+    }
+  }, [restaurantSlug])
 
   const clearFieldError = (field: FieldKey) => {
     setFieldErrors((prev) => {
@@ -371,8 +430,8 @@ export function BookingForm() {
     })
   }
 
-  const loadAvailability = async (nextDate: Date | undefined, guests: string) => {
-    if (!nextDate || !guests) {
+  const loadAvailability = async (nextDate: Date | undefined, guests: string, slug: string) => {
+    if (!nextDate || !guests || !slug) {
       setAvailableSlots([])
       setAvailabilitySchedule(null)
       setIsAvailabilityLoading(false)
@@ -380,7 +439,7 @@ export function BookingForm() {
     }
     setIsAvailabilityLoading(true)
     try {
-      const data = await userApi.getAvailability(format(nextDate, "yyyy-MM-dd"), parseInt(guests, 10))
+      const data = await userApi.getAvailability(format(nextDate, "yyyy-MM-dd"), parseInt(guests, 10), slug)
       setAvailabilitySchedule(data.schedule)
       setAvailableSlots(data.slots.filter((slot) => slot.available))
     } catch {
@@ -404,6 +463,7 @@ export function BookingForm() {
     try {
       const setsPayload = setsFormValueToApi(formData.set, date)
       const result = await userApi.createReservation({
+        restaurant: restaurantSlug,
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         phone: formData.phone.trim(),
@@ -491,6 +551,44 @@ export function BookingForm() {
 
   const handleReviewChange = () => {
     setShowReviewDialog(false)
+  }
+
+  if (slugStatus === "loading") {
+    return (
+      <div className="py-12 text-center text-sm text-muted-foreground">Загрузка…</div>
+    )
+  }
+
+  if (slugStatus === "invalid") {
+    return (
+      <div className="flex flex-col items-center gap-4 py-10 text-center">
+        <p className="max-w-sm text-sm text-destructive">Ресторан не найден или недоступен для бронирования.</p>
+        <Button asChild variant="outline" className="h-12 rounded-xl px-6">
+          <Link href="/">Выбрать другой ресторан</Link>
+        </Button>
+      </div>
+    )
+  }
+
+  if (slugStatus === "error") {
+    return (
+      <div className="flex flex-col items-center gap-4 py-10 text-center">
+        <p className="max-w-sm text-sm text-destructive">
+          Не удалось загрузить данные. Проверьте соединение и попробуйте снова.
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-12 rounded-xl px-6"
+          onClick={() => setSlugCheckRetryKey((k) => k + 1)}
+        >
+          Повторить
+        </Button>
+        <Link href="/" className="text-sm text-muted-foreground underline underline-offset-2">
+          К списку ресторанов
+        </Link>
+      </div>
+    )
   }
 
   if (isSubmitted) {
@@ -701,10 +799,17 @@ export function BookingForm() {
 
         <div className="h-px bg-border" />
 
-        <div className="space-y-4">
+          <div className="space-y-4">
           <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
             <Users className="h-3.5 w-3.5" />
             <span>Детали бронирования</span>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Ресторан</Label>
+            <div className="flex min-h-12 items-center rounded-xl border border-border bg-muted/30 px-4 py-3 text-base font-medium text-foreground">
+              {restaurantDisplayName || restaurantSlug}
+            </div>
           </div>
 
           <div className="space-y-1.5">
@@ -716,7 +821,7 @@ export function BookingForm() {
               onValueChange={(value) => {
                 clearFieldError("guests")
                 setFormData((prev) => ({ ...prev, guests: value, time: "" }))
-                void loadAvailability(date, value)
+                void loadAvailability(date, value, restaurantSlug)
               }}
             >
               <SelectTrigger
@@ -785,7 +890,7 @@ export function BookingForm() {
                       }
                       return { ...prev, time: "", set: nextSet }
                     })
-                    void loadAvailability(value, formData.guests)
+                    void loadAvailability(value, formData.guests, restaurantSlug)
                   }}
                   locale={ru}
                   disabled={(day) => day < new Date()}
@@ -866,7 +971,7 @@ export function BookingForm() {
                   fieldErrors.time ? "border-destructive ring-1 ring-destructive/40" : "border-border"
                 )}
               >
-                Заполните все поля выше (имя, фамилия, телефон, email, гости, дату и сеты), чтобы увидеть доступное время.
+                Заполните все поля выше (имя, фамилия, телефон, email, ресторан, гости, дату и сеты), чтобы увидеть доступное время.
               </div>
             ) : isAvailabilityLoading ? (
               <div

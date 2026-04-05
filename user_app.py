@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 
 from booking_service import (
@@ -10,11 +10,79 @@ from booking_service import (
     get_slots_for_day,
     confirm_reservation,
 )
+from request_context import get_restaurant_id, set_restaurant_id
+from restaurants import (
+    get_restaurant_by_slug,
+    get_restaurant_id_by_slug,
+    list_restaurants_public,
+    resolved_menu_file_path,
+)
 from email_service import send_reservation_email
 from telegram_service import notify_pending_reservation
 
 app = Flask(__name__)
 CORS(app)
+
+
+@app.before_request
+def _user_set_restaurant():
+    if request.method == "OPTIONS":
+        return None
+    path = request.path
+    if not path.startswith("/api/"):
+        return None
+    if path in ("/api/v1/restaurants",):
+        return None
+    if path.startswith("/api/v1/menus/"):
+        return None
+    if path == "/health":
+        return None
+    slug = None
+    if request.method == "GET" and path == "/api/v1/availability":
+        slug = request.args.get("restaurant")
+    elif request.method == "POST" and path == "/api/v1/reservations":
+        body = request.get_json(silent=True) or {}
+        slug = body.get("restaurant")
+    elif request.method == "GET" and path.startswith("/api/v1/reservations/"):
+        slug = request.args.get("restaurant")
+    elif request.method == "POST" and path.endswith("/confirm"):
+        body = request.get_json(silent=True) or {}
+        slug = body.get("restaurant") or request.args.get("restaurant")
+    if not slug:
+        return (
+            jsonify(
+                {
+                    "error": "Parameter restaurant (slug) is required — use ?restaurant=... or JSON field restaurant",
+                }
+            ),
+            400,
+        )
+    rid = get_restaurant_id_by_slug(slug)
+    if not rid:
+        return jsonify({"error": "Unknown restaurant"}), 404
+    set_restaurant_id(rid)
+    return None
+
+
+@app.get("/api/v1/restaurants")
+def public_restaurants():
+    return jsonify(list_restaurants_public())
+
+
+@app.get("/api/v1/menus/<slug>")
+def serve_public_menu_pdf(slug):
+    row = get_restaurant_by_slug(slug)
+    if not row or not row.get("menu_pdf_storage_name"):
+        return jsonify({"error": "Menu not found"}), 404
+    path = resolved_menu_file_path(row["menu_pdf_storage_name"])
+    if not path:
+        return jsonify({"error": "Menu not found"}), 404
+    return send_file(
+        path,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name="menu.pdf",
+    )
 
 
 @app.get("/health")
@@ -97,7 +165,7 @@ def create_booking():
 
 @app.get("/api/v1/reservations/<int:reservation_id>")
 def reservation_details(reservation_id):
-    reservation = get_reservation(reservation_id)
+    reservation = get_reservation(reservation_id, restaurant_id=get_restaurant_id())
     if not reservation:
         return jsonify({"error": "Reservation not found"}), 404
     return jsonify(reservation)
@@ -112,7 +180,7 @@ def confirm_booking(reservation_id):
 
     if not confirm_reservation(reservation_id, code):
         return jsonify({"error": "Invalid confirmation code or reservation unavailable"}), 400
-    reservation = get_reservation(reservation_id)
+    reservation = get_reservation(reservation_id, restaurant_id=get_restaurant_id())
     if reservation:
         send_reservation_email("confirmed", reservation)
     return jsonify({"message": "Reservation confirmed", "reservation": reservation})

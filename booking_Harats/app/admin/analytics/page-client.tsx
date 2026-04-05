@@ -5,6 +5,7 @@ import Link from "next/link"
 import { format, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns"
 import { ru } from "date-fns/locale"
 import { ArrowLeft, BarChart3, CalendarIcon, TrendingUp, Users } from "lucide-react"
+import { AdminLogoutButton } from "@/components/admin/admin-logout-button"
 import type { Booking } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -104,6 +105,7 @@ export function AdminAnalyticsPageClient() {
               <p className="text-sm text-muted-foreground">Статистика по бронированиям</p>
             </div>
           </div>
+          <AdminLogoutButton />
         </div>
       </div>
 

@@ -9,6 +9,7 @@ from datetime import datetime, time, timedelta
 
 from openpyxl import Workbook
 from db import execute, execute_returning, query_all, query_one
+from request_context import get_restaurant_id
 
 SLOT_MINUTES = int(os.getenv("SLOT_MINUTES", "120"))
 AVAILABILITY_STEP_MINUTES = int(os.getenv("AVAILABILITY_STEP_MINUTES", "30"))
@@ -93,18 +94,22 @@ def parse_time_value(value):
 
 
 def ensure_weekly_schedule():
-    existing = query_all("SELECT weekday FROM weekly_schedule")
+    rid = get_restaurant_id()
+    existing = query_all(
+        "SELECT weekday FROM weekly_schedule WHERE restaurant_id = %s",
+        (rid,),
+    )
     existing_days = {int(row["weekday"]) for row in existing}
     for weekday in range(7):
         if weekday in existing_days:
             continue
         execute(
             """
-            INSERT INTO weekly_schedule (weekday, day_name, is_open, open_time, close_time)
-            VALUES (%s, %s, TRUE, %s, %s)
-            ON CONFLICT (weekday) DO NOTHING
+            INSERT INTO weekly_schedule (restaurant_id, weekday, day_name, is_open, open_time, close_time)
+            VALUES (%s, %s, %s, TRUE, %s, %s)
+            ON CONFLICT (restaurant_id, weekday) DO NOTHING
             """,
-            (weekday, WEEKDAY_NAMES[weekday], default_open_time(), default_close_time()),
+            (rid, weekday, WEEKDAY_NAMES[weekday], default_open_time(), default_close_time()),
         )
 
 
@@ -120,12 +125,15 @@ def serialize_schedule_row(row):
 
 def list_weekly_schedule():
     ensure_weekly_schedule()
+    rid = get_restaurant_id()
     rows = query_all(
         """
         SELECT weekday, day_name, is_open, open_time, close_time
         FROM weekly_schedule
+        WHERE restaurant_id = %s
         ORDER BY weekday
-        """
+        """,
+        (rid,),
     )
     return [serialize_schedule_row(row) for row in rows]
 
@@ -141,9 +149,9 @@ def get_schedule_for_date(date_value):
         """
         SELECT weekday, day_name, is_open, open_time, close_time
         FROM weekly_schedule
-        WHERE weekday = %s
+        WHERE weekday = %s AND restaurant_id = %s
         """,
-        (date_obj.weekday(),),
+        (date_obj.weekday(), get_restaurant_id()),
     )
     if row is None:
         return {
@@ -174,7 +182,7 @@ def update_schedule_day(weekday, is_open, open_time_value=None, close_time_value
             is_open = %s,
             open_time = %s,
             close_time = %s
-        WHERE weekday = %s
+        WHERE weekday = %s AND restaurant_id = %s
         RETURNING weekday, day_name, is_open, open_time, close_time
         """,
         (
@@ -183,6 +191,7 @@ def update_schedule_day(weekday, is_open, open_time_value=None, close_time_value
             open_time_parsed,
             close_time_parsed,
             weekday,
+            get_restaurant_id(),
         ),
     )
     return serialize_schedule_row(row)
@@ -193,22 +202,26 @@ def list_active_tables():
         """
         SELECT id, name, capacity, can_unite, unite_with_table_id
         FROM tables
-        WHERE is_active = TRUE
+        WHERE is_active = TRUE AND restaurant_id = %s
         ORDER BY LOWER(name), id
-        """
+        """,
+        (get_restaurant_id(),),
     )
 
 
 def list_table_blocks(date_value=None):
+    rid = get_restaurant_id()
     sql = """
-        SELECT id, table_id, start_time, end_time, reason, created_at
-        FROM table_blocks
+        SELECT tb.id, tb.table_id, tb.start_time, tb.end_time, tb.reason, tb.created_at
+        FROM table_blocks tb
+        JOIN tables t ON t.id = tb.table_id
+        WHERE t.restaurant_id = %s
     """
-    params = []
+    params = [rid]
     if date_value:
-        sql += " WHERE DATE(start_time) = %s"
+        sql += " AND DATE(tb.start_time) = %s"
         params.append(date_value)
-    sql += " ORDER BY start_time ASC"
+    sql += " ORDER BY tb.start_time ASC"
     return query_all(sql, tuple(params))
 
 
@@ -277,6 +290,7 @@ def get_table_conflict_details(table_ids, reservation_time, exclude_reservation_
         FROM reservations r
         JOIN reservation_tables rt ON rt.reservation_id = r.id
         WHERE rt.table_id = ANY(%s::int[])
+          AND r.restaurant_id = %s
           AND r.status IN ('pending', 'confirmed')
           AND r.reservation_time < %s
           AND r.reservation_time + (%s || ' minutes')::interval > %s
@@ -286,6 +300,7 @@ def get_table_conflict_details(table_ids, reservation_time, exclude_reservation_
         """,
         (
             list(table_ids),
+            get_restaurant_id(),
             end,
             SLOT_MINUTES,
             start,
@@ -301,13 +316,15 @@ def get_table_block_details(table_ids, reservation_time):
         """
         SELECT tb.*
         FROM table_blocks tb
+        JOIN tables t ON t.id = tb.table_id
         WHERE tb.table_id = ANY(%s::int[])
+          AND t.restaurant_id = %s
           AND tb.start_time < %s
           AND tb.end_time > %s
         ORDER BY tb.start_time
         LIMIT 1
         """,
-        (list(table_ids), end, start),
+        (list(table_ids), get_restaurant_id(), end, start),
     )
 
 
@@ -364,9 +381,9 @@ def validate_table_selection(table_ids, guests, reservation_time, exclude_reserv
         """
         SELECT id, capacity, can_unite, unite_with_table_id
         FROM tables
-        WHERE id = ANY(%s::int[]) AND is_active = TRUE
+        WHERE id = ANY(%s::int[]) AND is_active = TRUE AND restaurant_id = %s
         """,
-        (list(table_ids),),
+        (list(table_ids), get_restaurant_id()),
     )
     if len(selected_tables) != len(table_ids):
         raise ValueError("One or more selected tables do not exist or are inactive")
@@ -400,7 +417,9 @@ def create_reservation(
     created_by_admin=False,
     admin_note=None,
     force=False,
+    restaurant_id=None,
 ):
+    rid = int(restaurant_id) if restaurant_id is not None else get_restaurant_id()
     guests = int(guests)
     sets = int(sets) if sets is not None else 1
     if guests < 1 or guests > MAX_PARTY_SIZE:
@@ -430,13 +449,14 @@ def create_reservation(
     reservation = execute_returning(
         """
         INSERT INTO reservations (
-            customer_name, reservation_time, guests, sets, email, phone, note, status,
+            restaurant_id, customer_name, reservation_time, guests, sets, email, phone, note, status,
             confirmation_code, created_by_admin, admin_note, updated_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
         RETURNING *
         """,
         (
+            rid,
             customer_name,
             reservation_time,
             guests,
@@ -479,6 +499,7 @@ def reservation_payload(row):
         "endTime": end_time.strftime("%H:%M"),
         "guests": row["guests"],
         "sets": row.get("sets", 1),
+        "restaurantId": row.get("restaurant_id"),
         "email": row["email"],
         "phone": row["phone"],
         "note": row.get("note"),
@@ -495,16 +516,21 @@ def reservation_payload(row):
     }
 
 
-def get_reservation(reservation_id):
+def get_reservation(reservation_id, restaurant_id=None):
+    rid_filter = ""
+    params = [reservation_id]
+    if restaurant_id is not None:
+        rid_filter = " AND r.restaurant_id = %s"
+        params.append(int(restaurant_id))
     row = query_one(
-        """
+        f"""
         SELECT r.*, STRING_AGG(rt.table_id::text, ',' ORDER BY rt.table_id) AS table_ids
         FROM reservations r
         LEFT JOIN reservation_tables rt ON rt.reservation_id = r.id
-        WHERE r.id = %s
+        WHERE r.id = %s{rid_filter}
         GROUP BY r.id
         """,
-        (reservation_id,),
+        tuple(params),
     )
     return reservation_payload(row)
 
@@ -554,7 +580,7 @@ def get_slots_for_day(date_value, guests):
 
 
 def update_reservation(reservation_id, updates, force=False, allow_insufficient_capacity=False):
-    current = get_reservation(reservation_id)
+    current = get_reservation(reservation_id, restaurant_id=get_restaurant_id())
     if not current:
         return None
     if current["status"] == "cancelled":
@@ -609,7 +635,7 @@ def update_reservation(reservation_id, updates, force=False, allow_insufficient_
             note = %s,
             admin_note = %s,
             updated_at = NOW()
-        WHERE id = %s
+        WHERE id = %s AND restaurant_id = %s
         """,
         (
             new_name,
@@ -621,6 +647,7 @@ def update_reservation(reservation_id, updates, force=False, allow_insufficient_
             new_note,
             new_admin_note,
             reservation_id,
+            get_restaurant_id(),
         ),
     )
     execute("DELETE FROM reservation_tables WHERE reservation_id = %s", (reservation_id,))
@@ -629,20 +656,22 @@ def update_reservation(reservation_id, updates, force=False, allow_insufficient_
             "INSERT INTO reservation_tables (reservation_id, table_id) VALUES (%s, %s)",
             (reservation_id, table_id),
         )
-    return get_reservation(reservation_id)
+    return get_reservation(reservation_id, restaurant_id=get_restaurant_id())
 
 
-def confirm_reservation(reservation_id, code):
+def confirm_reservation(reservation_id, code, restaurant_id=None):
+    rid = int(restaurant_id) if restaurant_id is not None else get_restaurant_id()
     row = execute_returning(
         """
         UPDATE reservations
         SET status = 'confirmed', updated_at = NOW()
         WHERE id = %s
+          AND restaurant_id = %s
           AND status <> 'cancelled'
           AND confirmation_code = %s
         RETURNING id
         """,
-        (reservation_id, code),
+        (reservation_id, rid, code),
     )
     return row is not None
 
@@ -653,10 +682,11 @@ def admin_confirm_reservation(reservation_id):
         UPDATE reservations
         SET status = 'confirmed', updated_at = NOW()
         WHERE id = %s
+          AND restaurant_id = %s
           AND status = 'pending'
         RETURNING id
         """,
-        (reservation_id,),
+        (reservation_id, get_restaurant_id()),
     )
 
 
@@ -668,10 +698,10 @@ def cancel_reservation(reservation_id, reason=None):
             cancelled_at = NOW(),
             admin_note = COALESCE(%s, admin_note),
             updated_at = NOW()
-        WHERE id = %s
+        WHERE id = %s AND restaurant_id = %s
         RETURNING id
         """,
-        (reason, reservation_id),
+        (reason, reservation_id, get_restaurant_id()),
     )
 
 
@@ -683,17 +713,18 @@ def restore_cancelled_reservation(reservation_id):
             cancelled_at = NULL,
             updated_at = NOW()
         WHERE id = %s
+          AND restaurant_id = %s
           AND status = 'cancelled'
         RETURNING id
         """,
-        (reservation_id,),
+        (reservation_id, get_restaurant_id()),
     )
 
 
 def delete_cancelled_reservation(reservation_id):
     reservation = query_one(
-        "SELECT id FROM reservations WHERE id = %s AND status = 'cancelled'",
-        (reservation_id,),
+        "SELECT id FROM reservations WHERE id = %s AND restaurant_id = %s AND status = 'cancelled'",
+        (reservation_id, get_restaurant_id()),
     )
     if not reservation:
         return None
@@ -702,8 +733,8 @@ def delete_cancelled_reservation(reservation_id):
 
 
 def list_reservations(filters):
-    conditions = []
-    params = []
+    conditions = ["r.restaurant_id = %s"]
+    params = [get_restaurant_id()]
     if filters.get("status"):
         conditions.append("r.status = %s")
         params.append(filters["status"])
@@ -723,7 +754,7 @@ def list_reservations(filters):
         q = f"%{filters['q'].lower()}%"
         params.extend([q, q, f"%{filters['q']}%", f"%{filters['q']}%"])
 
-    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    where_clause = f"WHERE {' AND '.join(conditions)}"
     rows = query_all(
         f"""
         SELECT r.*, STRING_AGG(rt.table_id::text, ',' ORDER BY rt.table_id) AS table_ids
@@ -778,9 +809,11 @@ def clients_database_to_xlsx():
             email,
             reservation_time
         FROM reservations
-        WHERE COALESCE(TRIM(phone), '') <> ''
+        WHERE restaurant_id = %s
+          AND COALESCE(TRIM(phone), '') <> ''
         ORDER BY phone ASC, reservation_time DESC
-        """
+        """,
+        (get_restaurant_id(),),
     )
 
     clients_by_phone = {}

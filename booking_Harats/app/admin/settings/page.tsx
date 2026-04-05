@@ -6,7 +6,10 @@ export default async function AdminSettingsPage({
   searchParams: Promise<{ tab?: string }>
 }) {
   const params = await searchParams
-  const tab = params.tab === "schedule" || params.tab === "telegram" ? params.tab : "tables"
+  const tab =
+    params.tab === "schedule" || params.tab === "telegram" || params.tab === "menu"
+      ? params.tab
+      : "tables"
 
   return <AdminSettingsPageClient initialTab={tab} />
 }

@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { type ChangeEvent, useEffect, useState } from "react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Armchair, Clock3, Send } from "lucide-react"
+import { ArrowLeft, Armchair, Clock3, FileText, Send } from "lucide-react"
+import { AdminLogoutButton } from "@/components/admin/admin-logout-button"
 import type { ScheduleDay, Table } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -47,7 +48,11 @@ const dayLabels: Record<string, string> = {
 
 const TIME_24H_PATTERN = "^([01]\\d|2[0-3]):([0-5]\\d)$"
 
-export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" | "schedule" | "telegram" }) {
+export function AdminSettingsPageClient({
+  initialTab,
+}: {
+  initialTab: "tables" | "schedule" | "telegram" | "menu"
+}) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState(initialTab)
   const [tables, setTables] = useState<Table[]>([])
@@ -70,6 +75,11 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
   const [scheduleDrafts, setScheduleDrafts] = useState<Record<number, ScheduleDraft>>({})
   const [recipientLabel, setRecipientLabel] = useState("")
   const [recipientChatId, setRecipientChatId] = useState("")
+  const [menuHas, setMenuHas] = useState(false)
+  const [menuPublicPath, setMenuPublicPath] = useState<string | null>(null)
+  const [menuError, setMenuError] = useState("")
+  const [menuUploading, setMenuUploading] = useState(false)
+  const [menuDeleting, setMenuDeleting] = useState(false)
 
   useEffect(() => {
     setActiveTab(initialTab)
@@ -79,16 +89,19 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
     setIsLoading(true)
     setError("")
     try {
-      const [tablesData, scheduleData, recipientsData] = await Promise.all([
+      const [tablesData, scheduleData, recipientsData, menuData] = await Promise.all([
         adminApi.getTables(format(new Date(), "yyyy-MM-dd")),
         adminApi.getSchedule(),
         adminApi.getTelegramRecipients(),
+        adminApi.getMenuSettings(),
       ])
       const nextTables = tablesData as Table[]
       const nextSchedule = scheduleData as ScheduleDay[]
       setTables(nextTables)
       setSchedule(nextSchedule)
       setRecipients(recipientsData as TelegramRecipient[])
+      setMenuHas(Boolean(menuData.hasMenu))
+      setMenuPublicPath(menuData.menuUrl)
 
       const nextTableDrafts: Record<number, TableDraft> = {}
       nextTables.forEach((table) => {
@@ -123,9 +136,43 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
   }, [])
 
   const setTab = (tab: string) => {
-    if (tab !== "tables" && tab !== "schedule" && tab !== "telegram") return
+    if (tab !== "tables" && tab !== "schedule" && tab !== "telegram" && tab !== "menu") return
     setActiveTab(tab)
     router.replace(`/admin/settings?tab=${tab}`)
+  }
+
+  const userPublicBase = process.env.NEXT_PUBLIC_USER_API_URL || "/api/user"
+
+  const handleMenuFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setMenuError("")
+    setMenuUploading(true)
+    try {
+      await adminApi.uploadMenuPdf(file)
+      const m = await adminApi.getMenuSettings()
+      setMenuHas(m.hasMenu)
+      setMenuPublicPath(m.menuUrl)
+    } catch (err) {
+      setMenuError(err instanceof Error ? err.message : "Не удалось загрузить меню")
+    } finally {
+      setMenuUploading(false)
+      e.target.value = ""
+    }
+  }
+
+  const handleDeleteMenu = async () => {
+    setMenuError("")
+    setMenuDeleting(true)
+    try {
+      await adminApi.deleteMenuPdf()
+      setMenuHas(false)
+      setMenuPublicPath(null)
+    } catch (err) {
+      setMenuError(err instanceof Error ? err.message : "Не удалось удалить меню")
+    } finally {
+      setMenuDeleting(false)
+    }
   }
 
   const updateTableDraft = (tableId: number, patch: Partial<TableDraft>) => {
@@ -276,6 +323,9 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
           }
         : null
 
+  const guestMenuHref =
+    menuHas && menuPublicPath ? `${userPublicBase}${menuPublicPath}` : null
+
   return (
     <div className="min-h-screen bg-muted/30">
       <div className="sticky top-0 z-20 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
@@ -288,14 +338,17 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
             </Button>
             <div>
               <h1 className="text-2xl font-semibold">Настройки</h1>
-              <p className="text-sm text-muted-foreground">Столы, график и Telegram уведомления</p>
+              <p className="text-sm text-muted-foreground">Столы, график, меню PDF и Telegram</p>
             </div>
           </div>
-          {saveButtonConfig ? (
-            <Button onClick={saveButtonConfig.onClick} disabled={saveButtonConfig.disabled} className="shrink-0">
-              {saveButtonConfig.label}
-            </Button>
-          ) : <div />}
+          <div className="flex shrink-0 items-center gap-2">
+            <AdminLogoutButton />
+            {saveButtonConfig ? (
+              <Button onClick={saveButtonConfig.onClick} disabled={saveButtonConfig.disabled}>
+                {saveButtonConfig.label}
+              </Button>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -318,6 +371,10 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
               <TabsTrigger value="telegram">
                 <Send className="h-4 w-4" />
                 Telegram
+              </TabsTrigger>
+              <TabsTrigger value="menu">
+                <FileText className="h-4 w-4" />
+                Меню PDF
               </TabsTrigger>
             </TabsList>
 
@@ -522,6 +579,53 @@ export function AdminSettingsPageClient({ initialTab }: { initialTab: "tables" |
               </div>
 
               {telegramError && <div className="text-sm text-destructive">{telegramError}</div>}
+            </TabsContent>
+
+            <TabsContent value="menu" className="space-y-6">
+              <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Загрузите меню в формате PDF — на публичной странице бронирования появится ссылка «Меню ресторана».
+                  Если файл не загружен, гости ссылки не увидят.
+                </p>
+                {menuHas && guestMenuHref ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <a
+                      href={guestMenuHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-primary underline underline-offset-2"
+                    >
+                      Открыть меню (как у гостя)
+                    </a>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      disabled={menuDeleting}
+                      onClick={() => void handleDeleteMenu()}
+                    >
+                      {menuDeleting ? "Удаление…" : "Удалить меню"}
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Сейчас меню не загружено.</p>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="menu-pdf">Загрузить или заменить PDF</Label>
+                  <Input
+                    id="menu-pdf"
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    disabled={menuUploading}
+                    onChange={(ev) => void handleMenuFile(ev)}
+                    className="cursor-pointer"
+                  />
+                  {menuUploading && (
+                    <p className="text-xs text-muted-foreground">Загрузка…</p>
+                  )}
+                </div>
+                {menuError && <div className="text-sm text-destructive">{menuError}</div>}
+              </div>
             </TabsContent>
           </Tabs>
         )}

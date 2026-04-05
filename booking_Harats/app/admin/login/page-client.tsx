@@ -13,6 +13,7 @@ interface AdminLoginFormProps {
 
 export function AdminLoginForm({ nextPath }: AdminLoginFormProps) {
   const router = useRouter()
+  const [login, setLogin] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -26,7 +27,7 @@ export function AdminLoginForm({ nextPath }: AdminLoginFormProps) {
       const response = await fetch("/api/admin-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password, next: nextPath }),
+        body: JSON.stringify({ login, password, next: nextPath }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
@@ -51,11 +52,26 @@ export function AdminLoginForm({ nextPath }: AdminLoginFormProps) {
           </div>
           <div>
             <h1 className="text-xl font-semibold">Вход в админку</h1>
-            <p className="text-sm text-muted-foreground">Введите пароль для доступа к `/admin`</p>
+            <p className="text-sm text-muted-foreground">
+              Логин — идентификатор ресторана (slug). Для суперадмина:{" "}
+              <span className="font-medium text-foreground">superadmin</span>
+            </p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="admin-login">Логин</Label>
+            <Input
+              id="admin-login"
+              type="text"
+              value={login}
+              onChange={(event) => setLogin(event.target.value)}
+              placeholder="default или superadmin"
+              autoComplete="username"
+              autoFocus
+            />
+          </div>
           <div className="space-y-2">
             <Label htmlFor="admin-password">Пароль</Label>
             <Input
@@ -63,8 +79,8 @@ export function AdminLoginForm({ nextPath }: AdminLoginFormProps) {
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Введите пароль"
-              autoFocus
+              placeholder="Пароль"
+              autoComplete="current-password"
             />
           </div>
 
