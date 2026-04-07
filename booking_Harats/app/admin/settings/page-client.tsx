@@ -2,9 +2,10 @@
 
 import { type ChangeEvent, useEffect, useState } from "react"
 import Link from "next/link"
-import { format } from "date-fns"
+import { format, parseISO } from "date-fns"
+import { ru } from "date-fns/locale"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Armchair, Clock3, FileText, Send } from "lucide-react"
+import { ArrowLeft, Armchair, CalendarRange, Clock3, FileText, Send } from "lucide-react"
 import { AdminLogoutButton } from "@/components/admin/admin-logout-button"
 import type { ScheduleDay, Table } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
@@ -36,6 +37,13 @@ type TelegramRecipient = {
   isActive: boolean
 }
 
+type ScheduleOverrideRow = {
+  date: string
+  isOpen: boolean
+  openTime: string | null
+  closeTime: string | null
+}
+
 const dayLabels: Record<string, string> = {
   monday: "Понедельник",
   tuesday: "Вторник",
@@ -51,7 +59,7 @@ const TIME_24H_PATTERN = "^([01]\\d|2[0-3]):([0-5]\\d)$"
 export function AdminSettingsPageClient({
   initialTab,
 }: {
-  initialTab: "tables" | "schedule" | "telegram" | "menu"
+  initialTab: "tables" | "schedule" | "dates" | "telegram" | "menu"
 }) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState(initialTab)
@@ -80,6 +88,13 @@ export function AdminSettingsPageClient({
   const [menuError, setMenuError] = useState("")
   const [menuUploading, setMenuUploading] = useState(false)
   const [menuDeleting, setMenuDeleting] = useState(false)
+  const [scheduleOverrides, setScheduleOverrides] = useState<ScheduleOverrideRow[]>([])
+  const [scheduleOverridesError, setScheduleOverridesError] = useState("")
+  const [overrideFormDate, setOverrideFormDate] = useState("")
+  const [overrideFormOpen, setOverrideFormOpen] = useState(true)
+  const [overrideFormOpenTime, setOverrideFormOpenTime] = useState("12:00")
+  const [overrideFormCloseTime, setOverrideFormCloseTime] = useState("22:00")
+  const [savingOverride, setSavingOverride] = useState(false)
 
   useEffect(() => {
     setActiveTab(initialTab)
@@ -89,11 +104,12 @@ export function AdminSettingsPageClient({
     setIsLoading(true)
     setError("")
     try {
-      const [tablesData, scheduleData, recipientsData, menuData] = await Promise.all([
+      const [tablesData, scheduleData, recipientsData, menuData, overridesData] = await Promise.all([
         adminApi.getTables(format(new Date(), "yyyy-MM-dd")),
         adminApi.getSchedule(),
         adminApi.getTelegramRecipients(),
         adminApi.getMenuSettings(),
+        adminApi.listScheduleOverrides(),
       ])
       const nextTables = tablesData as Table[]
       const nextSchedule = scheduleData as ScheduleDay[]
@@ -102,6 +118,7 @@ export function AdminSettingsPageClient({
       setRecipients(recipientsData as TelegramRecipient[])
       setMenuHas(Boolean(menuData.hasMenu))
       setMenuPublicPath(menuData.menuUrl)
+      setScheduleOverrides(overridesData as ScheduleOverrideRow[])
 
       const nextTableDrafts: Record<number, TableDraft> = {}
       nextTables.forEach((table) => {
@@ -136,9 +153,52 @@ export function AdminSettingsPageClient({
   }, [])
 
   const setTab = (tab: string) => {
-    if (tab !== "tables" && tab !== "schedule" && tab !== "telegram" && tab !== "menu") return
+    if (
+      tab !== "tables" &&
+      tab !== "schedule" &&
+      tab !== "dates" &&
+      tab !== "telegram" &&
+      tab !== "menu"
+    )
+      return
     setActiveTab(tab)
     router.replace(`/admin/settings?tab=${tab}`)
+  }
+
+  const handleSaveScheduleOverride = async () => {
+    if (!overrideFormDate.trim()) {
+      setScheduleOverridesError("Укажите дату.")
+      return
+    }
+    setScheduleOverridesError("")
+    setSavingOverride(true)
+    try {
+      await adminApi.putScheduleOverride(overrideFormDate.trim(), {
+        is_open: overrideFormOpen,
+        ...(overrideFormOpen
+          ? { open_time: overrideFormOpenTime, close_time: overrideFormCloseTime }
+          : {}),
+      })
+      setScheduleOverrides(await adminApi.listScheduleOverrides())
+    } catch (err) {
+      setScheduleOverridesError(
+        err instanceof Error ? err.message : "Не удалось сохранить исключение по дате"
+      )
+    } finally {
+      setSavingOverride(false)
+    }
+  }
+
+  const handleDeleteScheduleOverride = async (dateStr: string) => {
+    setScheduleOverridesError("")
+    try {
+      await adminApi.deleteScheduleOverride(dateStr)
+      setScheduleOverrides(await adminApi.listScheduleOverrides())
+    } catch (err) {
+      setScheduleOverridesError(
+        err instanceof Error ? err.message : "Не удалось удалить исключение"
+      )
+    }
   }
 
   const userPublicBase = process.env.NEXT_PUBLIC_USER_API_URL || "/api/user"
@@ -338,7 +398,9 @@ export function AdminSettingsPageClient({
             </Button>
             <div>
               <h1 className="text-2xl font-semibold">Настройки</h1>
-              <p className="text-sm text-muted-foreground">Столы, график, меню PDF и Telegram</p>
+              <p className="text-sm text-muted-foreground">
+                Столы, график, даты, меню PDF и Telegram
+              </p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -367,6 +429,10 @@ export function AdminSettingsPageClient({
               <TabsTrigger value="schedule">
                 <Clock3 className="h-4 w-4" />
                 График
+              </TabsTrigger>
+              <TabsTrigger value="dates">
+                <CalendarRange className="h-4 w-4" />
+                Даты
               </TabsTrigger>
               <TabsTrigger value="telegram">
                 <Send className="h-4 w-4" />
@@ -533,6 +599,113 @@ export function AdminSettingsPageClient({
               </div>
 
               {scheduleError && <div className="text-sm text-destructive">{scheduleError}</div>}
+            </TabsContent>
+
+            <TabsContent value="dates" className="space-y-6">
+              <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Для выбранной календарной даты можно задать своё расписание (время работы или «закрыто»). В этот день
+                  недельный график не используется. Удалите исключение — снова действует обычный график по дню недели.
+                </p>
+                <div className="grid gap-4 md:grid-cols-[minmax(160px,1fr)_120px_1fr_1fr_auto] md:items-end">
+                  <div className="space-y-2">
+                    <Label htmlFor="override-date">Дата</Label>
+                    <Input
+                      id="override-date"
+                      type="date"
+                      value={overrideFormDate}
+                      onChange={(e) => setOverrideFormDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Открыто</Label>
+                    <div className="flex h-10 items-center">
+                      <Switch checked={overrideFormOpen} onCheckedChange={setOverrideFormOpen} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>С</Label>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="12:00"
+                      pattern={TIME_24H_PATTERN}
+                      title="Формат времени: ЧЧ:ММ"
+                      value={overrideFormOpenTime}
+                      onChange={(e) => setOverrideFormOpenTime(e.target.value)}
+                      disabled={!overrideFormOpen}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>До</Label>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="22:00"
+                      pattern={TIME_24H_PATTERN}
+                      title="Формат времени: ЧЧ:ММ"
+                      value={overrideFormCloseTime}
+                      onChange={(e) => setOverrideFormCloseTime(e.target.value)}
+                      disabled={!overrideFormOpen}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    className="w-full md:w-auto"
+                    disabled={savingOverride}
+                    onClick={() => void handleSaveScheduleOverride()}
+                  >
+                    {savingOverride ? "Сохранение…" : "Сохранить дату"}
+                  </Button>
+                </div>
+                {scheduleOverridesError && (
+                  <div className="text-sm text-destructive">{scheduleOverridesError}</div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium">Заданные исключения</h3>
+                {scheduleOverrides.length === 0 ? (
+                  <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+                    Пока нет исключений по датам (сейчас и на два года вперёд).
+                  </div>
+                ) : (
+                  scheduleOverrides.map((row) => (
+                    <div
+                      key={row.date}
+                      className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[minmax(200px,1fr)_1fr_auto]"
+                    >
+                      <div>
+                        <div className="font-medium">
+                          {format(parseISO(row.date), "d MMMM yyyy", { locale: ru })}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {format(parseISO(row.date), "EEEE", { locale: ru })}
+                        </div>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {row.isOpen ? (
+                          <>
+                            Открыто: {row.openTime ?? "—"} — {row.closeTime ?? "—"}
+                          </>
+                        ) : (
+                          <>Закрыто весь день</>
+                        )}
+                      </div>
+                      <div className="flex items-center">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          className="w-full md:w-auto"
+                          onClick={() => void handleDeleteScheduleOverride(row.date)}
+                        >
+                          Удалить
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </TabsContent>
 
             <TabsContent value="telegram" className="space-y-6">

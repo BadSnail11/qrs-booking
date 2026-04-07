@@ -151,6 +151,36 @@ export const adminApi = {
       body: JSON.stringify(body),
     })
   },
+  listScheduleOverrides(params?: { from?: string; to?: string }) {
+    const q = new URLSearchParams()
+    if (params?.from) q.set("from", params.from)
+    if (params?.to) q.set("to", params.to)
+    const qs = q.toString()
+    return request<Array<{ date: string; isOpen: boolean; openTime: string | null; closeTime: string | null }>>(
+      ADMIN_API_URL,
+      `/v1/settings/schedule-overrides${qs ? `?${qs}` : ""}`
+    )
+  },
+  putScheduleOverride(
+    date: string,
+    body: { is_open: boolean; open_time?: string; close_time?: string }
+  ) {
+    return request<{ date: string; isOpen: boolean; openTime: string | null; closeTime: string | null }>(
+      ADMIN_API_URL,
+      `/v1/settings/schedule-overrides/${encodeURIComponent(date)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }
+    )
+  },
+  deleteScheduleOverride(date: string) {
+    return request<{ message: string; date: string }>(
+      ADMIN_API_URL,
+      `/v1/settings/schedule-overrides/${encodeURIComponent(date)}`,
+      { method: "DELETE" }
+    )
+  },
   getTables(date: string) {
     return request<Array<Record<string, unknown>>>(ADMIN_API_URL, `/v1/tables?date=${encodeURIComponent(date)}`)
   },

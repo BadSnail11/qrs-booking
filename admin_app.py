@@ -13,9 +13,11 @@ from booking_service import (
     cancel_reservation,
     combine_date_time,
     create_reservation,
+    delete_schedule_date_override,
     get_reservation,
     list_active_tables,
     list_reservations,
+    list_schedule_date_overrides,
     list_table_blocks,
     parse_iso_dt,
     reservations_analytics,
@@ -25,6 +27,7 @@ from booking_service import (
     list_weekly_schedule,
     update_reservation,
     update_schedule_day,
+    upsert_schedule_date_override,
     validate_table_selection,
 )
 from db import execute, execute_returning, query_all
@@ -244,6 +247,39 @@ def patch_schedule_day(weekday):
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+    return jsonify(row)
+
+
+@app.get("/api/v1/settings/schedule-overrides")
+def get_schedule_overrides():
+    from_d = request.args.get("from")
+    to_d = request.args.get("to")
+    return jsonify(list_schedule_date_overrides(from_d, to_d))
+
+
+@app.put("/api/v1/settings/schedule-overrides/<date_str>")
+def put_schedule_override(date_str):
+    body = request.get_json(silent=True) or {}
+    try:
+        row = upsert_schedule_date_override(
+            date_str,
+            bool(body.get("is_open", True)),
+            body.get("open_time"),
+            body.get("close_time"),
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(row)
+
+
+@app.delete("/api/v1/settings/schedule-overrides/<date_str>")
+def remove_schedule_override(date_str):
+    try:
+        row = delete_schedule_date_override(date_str)
+    except ValueError:
+        return jsonify({"error": "Invalid date"}), 400
+    if not row:
+        return jsonify({"error": "Override not found"}), 404
     return jsonify(row)
 
 

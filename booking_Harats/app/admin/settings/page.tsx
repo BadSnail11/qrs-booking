@@ -7,7 +7,10 @@ export default async function AdminSettingsPage({
 }) {
   const params = await searchParams
   const tab =
-    params.tab === "schedule" || params.tab === "telegram" || params.tab === "menu"
+    params.tab === "schedule" ||
+    params.tab === "telegram" ||
+    params.tab === "menu" ||
+    params.tab === "dates"
       ? params.tab
       : "tables"
 

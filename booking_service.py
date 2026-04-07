@@ -138,6 +138,17 @@ def list_weekly_schedule():
     return [serialize_schedule_row(row) for row in rows]
 
 
+def _schedule_payload_from_date_override(row, date_obj):
+    wd = date_obj.weekday()
+    return {
+        "weekday": wd,
+        "dayName": WEEKDAY_NAMES[wd],
+        "isOpen": row["is_open"],
+        "openTime": row["open_time"].strftime("%H:%M") if row.get("open_time") else None,
+        "closeTime": row["close_time"].strftime("%H:%M") if row.get("close_time") else None,
+    }
+
+
 def get_schedule_for_date(date_value):
     ensure_weekly_schedule()
     date_obj = (
@@ -145,13 +156,25 @@ def get_schedule_for_date(date_value):
         if isinstance(date_value, datetime)
         else datetime.strptime(date_value, "%Y-%m-%d").date()
     )
+    rid = get_restaurant_id()
+    override = query_one(
+        """
+        SELECT is_open, open_time, close_time
+        FROM schedule_date_overrides
+        WHERE restaurant_id = %s AND override_date = %s
+        """,
+        (rid, date_obj),
+    )
+    if override is not None:
+        return _schedule_payload_from_date_override(override, date_obj)
+
     row = query_one(
         """
         SELECT weekday, day_name, is_open, open_time, close_time
         FROM weekly_schedule
         WHERE weekday = %s AND restaurant_id = %s
         """,
-        (date_obj.weekday(), get_restaurant_id()),
+        (date_obj.weekday(), rid),
     )
     if row is None:
         return {
@@ -195,6 +218,95 @@ def update_schedule_day(weekday, is_open, open_time_value=None, close_time_value
         ),
     )
     return serialize_schedule_row(row)
+
+
+def list_schedule_date_overrides(from_str=None, to_str=None):
+    rid = get_restaurant_id()
+    today = datetime.now().date()
+    if from_str:
+        from_d = datetime.strptime(from_str, "%Y-%m-%d").date()
+    else:
+        from_d = today
+    if to_str:
+        to_d = datetime.strptime(to_str, "%Y-%m-%d").date()
+    else:
+        to_d = today + timedelta(days=730)
+    rows = query_all(
+        """
+        SELECT override_date, is_open, open_time, close_time
+        FROM schedule_date_overrides
+        WHERE restaurant_id = %s AND override_date >= %s AND override_date <= %s
+        ORDER BY override_date ASC
+        """,
+        (rid, from_d, to_d),
+    )
+    return [
+        {
+            "date": row["override_date"].isoformat(),
+            "isOpen": row["is_open"],
+            "openTime": row["open_time"].strftime("%H:%M") if row.get("open_time") else None,
+            "closeTime": row["close_time"].strftime("%H:%M") if row.get("close_time") else None,
+        }
+        for row in rows
+    ]
+
+
+def upsert_schedule_date_override(date_str, is_open, open_time_value=None, close_time_value=None):
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+    rid = get_restaurant_id()
+    if is_open:
+        open_p = parse_time_value(open_time_value) or default_open_time()
+        close_p = parse_time_value(close_time_value) or default_close_time()
+        if close_p <= open_p:
+            raise ValueError("close_time must be later than open_time")
+        row = execute_returning(
+            """
+            INSERT INTO schedule_date_overrides (restaurant_id, override_date, is_open, open_time, close_time)
+            VALUES (%s, %s, TRUE, %s, %s)
+            ON CONFLICT (restaurant_id, override_date)
+            DO UPDATE SET
+                is_open = EXCLUDED.is_open,
+                open_time = EXCLUDED.open_time,
+                close_time = EXCLUDED.close_time
+            RETURNING override_date, is_open, open_time, close_time
+            """,
+            (rid, date_obj, open_p, close_p),
+        )
+    else:
+        row = execute_returning(
+            """
+            INSERT INTO schedule_date_overrides (restaurant_id, override_date, is_open, open_time, close_time)
+            VALUES (%s, %s, FALSE, NULL, NULL)
+            ON CONFLICT (restaurant_id, override_date)
+            DO UPDATE SET
+                is_open = EXCLUDED.is_open,
+                open_time = NULL,
+                close_time = NULL
+            RETURNING override_date, is_open, open_time, close_time
+            """,
+            (rid, date_obj),
+        )
+    return {
+        "date": row["override_date"].isoformat(),
+        "isOpen": row["is_open"],
+        "openTime": row["open_time"].strftime("%H:%M") if row.get("open_time") else None,
+        "closeTime": row["close_time"].strftime("%H:%M") if row.get("close_time") else None,
+    }
+
+
+def delete_schedule_date_override(date_str):
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+    row = execute_returning(
+        """
+        DELETE FROM schedule_date_overrides
+        WHERE restaurant_id = %s AND override_date = %s
+        RETURNING override_date
+        """,
+        (get_restaurant_id(), date_obj),
+    )
+    if not row:
+        return None
+    return {"message": "deleted", "date": row["override_date"].isoformat()}
 
 
 def list_active_tables():
