@@ -6,6 +6,10 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // Default is 10MB; menu PDF uploads go through /api/admin → proxy and hit this limit (HTTP 413).
+  experimental: {
+    proxyClientMaxBodySize: 50 * 1024 * 1024,
+  },
   async rewrites() {
     return [
       {

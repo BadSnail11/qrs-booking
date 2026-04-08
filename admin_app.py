@@ -61,6 +61,10 @@ from telegram_service import (
 app = Flask(__name__)
 CORS(app)
 
+# Menu PDF upload (and other large bodies) — must stay in sync with booking_Harats next.config
+# experimental.proxyClientMaxBodySize when traffic goes through the Next admin proxy.
+app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_MENU_UPLOAD_BYTES", str(50 * 1024 * 1024)))
+
 SUPERADMIN_LOGIN = (os.getenv("SUPERADMIN_LOGIN") or "superadmin").strip().lower()
 SUPERADMIN_PASSWORD = (os.getenv("SUPERADMIN_PASSWORD") or "").strip()
 
