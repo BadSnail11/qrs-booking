@@ -95,9 +95,6 @@ export function AdminSettingsPageClient({
   const [menuError, setMenuError] = useState("")
   const [menuUploading, setMenuUploading] = useState(false)
   const [menuDeleting, setMenuDeleting] = useState(false)
-  const [publicFooterText, setPublicFooterText] = useState("")
-  const [savingFooter, setSavingFooter] = useState(false)
-  const [footerSettingsError, setFooterSettingsError] = useState("")
   const [guestContactAddress, setGuestContactAddress] = useState("")
   const [guestContactPhone, setGuestContactPhone] = useState("")
   const [guestContactHours, setGuestContactHours] = useState("")
@@ -124,25 +121,16 @@ export function AdminSettingsPageClient({
     setIsLoading(true)
     setError("")
     try {
-      const [
-        tablesData,
-        scheduleData,
-        recipientsData,
-        menuData,
-        overridesData,
-        footerData,
-        guestContactData,
-        setsData,
-      ] = await Promise.all([
-        adminApi.getTables(format(new Date(), "yyyy-MM-dd")),
-        adminApi.getSchedule(),
-        adminApi.getTelegramRecipients(),
-        adminApi.getMenuSettings(),
-        adminApi.listScheduleOverrides(),
-        adminApi.getPublicFooter(),
-        adminApi.getPublicGuestContact(),
-        adminApi.getSetsChoiceIntervals(),
-      ])
+      const [tablesData, scheduleData, recipientsData, menuData, overridesData, guestContactData, setsData] =
+        await Promise.all([
+          adminApi.getTables(format(new Date(), "yyyy-MM-dd")),
+          adminApi.getSchedule(),
+          adminApi.getTelegramRecipients(),
+          adminApi.getMenuSettings(),
+          adminApi.listScheduleOverrides(),
+          adminApi.getPublicGuestContact(),
+          adminApi.getSetsChoiceIntervals(),
+        ])
       const nextTables = tablesData as Table[]
       const nextSchedule = scheduleData as ScheduleDay[]
       setTables(nextTables)
@@ -150,7 +138,6 @@ export function AdminSettingsPageClient({
       setRecipients(recipientsData as TelegramRecipient[])
       setMenuHas(Boolean(menuData.hasMenu))
       setMenuPublicPath(menuData.menuUrl)
-      setPublicFooterText(footerData.footerText ?? "")
       setGuestContactAddress(guestContactData.address ?? "")
       setGuestContactPhone(guestContactData.phone ?? "")
       setGuestContactHours(guestContactData.hours ?? "")
@@ -270,38 +257,6 @@ export function AdminSettingsPageClient({
       setMenuError(err instanceof Error ? err.message : "Не удалось удалить меню")
     } finally {
       setMenuDeleting(false)
-    }
-  }
-
-  const handleSavePublicFooter = async () => {
-    setFooterSettingsError("")
-    setSavingFooter(true)
-    try {
-      const r = await adminApi.patchPublicFooter({
-        footerText: publicFooterText.trim() || null,
-      })
-      setPublicFooterText(r.footerText ?? "")
-    } catch (err) {
-      setFooterSettingsError(
-        err instanceof Error ? err.message : "Не удалось сохранить строку копирайта"
-      )
-    } finally {
-      setSavingFooter(false)
-    }
-  }
-
-  const handleResetPublicFooter = async () => {
-    setFooterSettingsError("")
-    setSavingFooter(true)
-    try {
-      const r = await adminApi.patchPublicFooter({ footerText: null })
-      setPublicFooterText(r.footerText ?? "")
-    } catch (err) {
-      setFooterSettingsError(
-        err instanceof Error ? err.message : "Не удалось сбросить строку копирайта"
-      )
-    } finally {
-      setSavingFooter(false)
     }
   }
 
@@ -1085,52 +1040,6 @@ export function AdminSettingsPageClient({
                 </div>
                 {guestContactSettingsError && (
                   <div className="text-sm text-destructive">{guestContactSettingsError}</div>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-border bg-card p-4 space-y-4">
-                <div>
-                  <p className="text-sm font-medium">Строка копирайта внизу страницы</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Мелкий текст под всей страницей бронирования. Можно несколько строк. Если оставить пустым
-                    и сохранить — подставится стандартная строка © и год.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="public-footer">Текст копирайта</Label>
-                  <Textarea
-                    id="public-footer"
-                    value={publicFooterText}
-                    onChange={(e) => setPublicFooterText(e.target.value)}
-                    placeholder={`© ${new Date().getFullYear()} Название. Все права защищены.`}
-                    rows={4}
-                    maxLength={4000}
-                    disabled={savingFooter}
-                    className="min-h-[100px] resize-y"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {publicFooterText.length}/4000 символов
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    disabled={savingFooter}
-                    onClick={() => void handleSavePublicFooter()}
-                  >
-                    {savingFooter ? "Сохранение…" : "Сохранить копирайт"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={savingFooter}
-                    onClick={() => void handleResetPublicFooter()}
-                  >
-                    Стандартный текст
-                  </Button>
-                </div>
-                {footerSettingsError && (
-                  <div className="text-sm text-destructive">{footerSettingsError}</div>
                 )}
               </div>
             </TabsContent>

@@ -73,7 +73,6 @@ export type PublicRestaurant = {
   slug: string
   displayName: string
   menuUrl: string | null
-  footerText: string | null
   guestContact: GuestContactPublic
   setsChoiceIntervals: SetsChoiceInterval[]
 }
@@ -128,15 +127,6 @@ export const adminApi = {
   },
   getMenuSettings() {
     return request<{ hasMenu: boolean; menuUrl: string | null }>(ADMIN_API_URL, "/v1/settings/menu")
-  },
-  getPublicFooter() {
-    return request<{ footerText: string | null }>(ADMIN_API_URL, "/v1/settings/public-footer")
-  },
-  patchPublicFooter(body: { footerText: string | null }) {
-    return request<{ footerText: string | null }>(ADMIN_API_URL, "/v1/settings/public-footer", {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    })
   },
   getPublicGuestContact() {
     return request<GuestContactPublic>(ADMIN_API_URL, "/v1/settings/public-guest-contact")

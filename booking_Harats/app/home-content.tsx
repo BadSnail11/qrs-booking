@@ -28,6 +28,10 @@ function hasGuestContactBlock(c: GuestContactPublic | null | undefined): boolean
   return Boolean((c.address && c.address.trim()) || (c.phone && c.phone.trim()) || (c.hours && c.hours.trim()))
 }
 
+function defaultGuestFooterLine() {
+  return `© ${new Date().getFullYear()} Ресторан. Все права защищены.`
+}
+
 function PickerLayout() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -45,28 +49,20 @@ function PickerLayout() {
         <RestaurantPicker />
       </main>
       <footer className="px-5 pb-8 pt-2">
-        <p className="text-center text-xs text-muted-foreground">
-          © 2026 Ресторан. Все права защищены.
-        </p>
+        <p className="text-center text-xs text-muted-foreground">{defaultGuestFooterLine()}</p>
       </footer>
     </div>
   )
 }
 
-function defaultGuestFooterLine() {
-  return `© ${new Date().getFullYear()} Ресторан. Все права защищены.`
-}
-
 function BookingLayout({
   restaurantSlug,
   menuPdfHref,
-  footerLine,
   guestContact,
   setsChoiceIntervals,
 }: {
   restaurantSlug: string
   menuPdfHref: string | null
-  footerLine: string | null
   guestContact: GuestContactPublic | null
   setsChoiceIntervals: SetsChoiceInterval[]
 }) {
@@ -143,9 +139,7 @@ function BookingLayout({
       ) : null}
 
       <footer className="px-5 pb-8 pt-2">
-        <p className="text-center text-xs text-muted-foreground whitespace-pre-wrap">
-          {footerLine?.trim() ? footerLine.trim() : defaultGuestFooterLine()}
-        </p>
+        <p className="text-center text-xs text-muted-foreground">{defaultGuestFooterLine()}</p>
       </footer>
     </div>
   )
@@ -155,7 +149,6 @@ export function HomeContent() {
   const searchParams = useSearchParams()
   const restaurantSlug = useMemo(() => searchParams.get("restaurant")?.trim() ?? "", [searchParams])
   const [menuPdfHref, setMenuPdfHref] = useState<string | null>(null)
-  const [footerLine, setFooterLine] = useState<string | null>(null)
   const [guestContact, setGuestContact] = useState<GuestContactPublic | null>(null)
   const [setsChoiceIntervals, setSetsChoiceIntervals] = useState<SetsChoiceInterval[]>([])
 
@@ -169,14 +162,12 @@ export function HomeContent() {
         const r = rows.find((x) => x.slug === restaurantSlug)
         const path = r?.menuUrl
         setMenuPdfHref(path ? `${USER_API_BASE}${path}` : null)
-        setFooterLine(r?.footerText ?? null)
         setGuestContact(r?.guestContact ?? null)
         setSetsChoiceIntervals(r?.setsChoiceIntervals ?? [])
       })
       .catch(() => {
         if (!cancelled) {
           setMenuPdfHref(null)
-          setFooterLine(null)
           setGuestContact(null)
           setSetsChoiceIntervals([])
         }
@@ -194,7 +185,6 @@ export function HomeContent() {
     <BookingLayout
       restaurantSlug={restaurantSlug}
       menuPdfHref={menuPdfHref}
-      footerLine={footerLine}
       guestContact={guestContact}
       setsChoiceIntervals={setsChoiceIntervals}
     />

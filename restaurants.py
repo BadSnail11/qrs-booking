@@ -102,7 +102,7 @@ def set_public_guest_contact(restaurant_id: int, address, phone, hours) -> None:
 def get_restaurant_by_slug(slug: str):
     return query_one(
         """
-        SELECT id, slug, display_name, password_hash, is_active, menu_pdf_storage_name, public_footer_text,
+        SELECT id, slug, display_name, password_hash, is_active, menu_pdf_storage_name,
                public_guest_address, public_guest_phone, public_guest_hours
         FROM restaurants
         WHERE slug = %s AND is_active = TRUE
@@ -119,7 +119,7 @@ def get_restaurant_id_by_slug(slug: str):
 def list_restaurants_public():
     rows = query_all(
         """
-        SELECT id, slug, display_name, menu_pdf_storage_name, public_footer_text,
+        SELECT id, slug, display_name, menu_pdf_storage_name,
                public_guest_address, public_guest_phone, public_guest_hours
         FROM restaurants
         WHERE is_active = TRUE
@@ -155,11 +155,6 @@ def list_restaurants_public():
             item["menuUrl"] = f"/v1/menus/{row['slug']}"
         else:
             item["menuUrl"] = None
-        ft = row.get("public_footer_text")
-        if ft and str(ft).strip():
-            item["footerText"] = str(ft).strip()
-        else:
-            item["footerText"] = None
         item["setsChoiceIntervals"] = interval_by_id.get(rid, [])
         item["guestContact"] = guest_contact_public_dict(row)
         out.append(item)
@@ -169,7 +164,7 @@ def list_restaurants_public():
 def list_restaurants_all():
     rows = query_all(
         """
-        SELECT id, slug, display_name, is_active, created_at, menu_pdf_storage_name, public_footer_text,
+        SELECT id, slug, display_name, is_active, created_at, menu_pdf_storage_name,
                public_guest_address, public_guest_phone, public_guest_hours
         FROM restaurants
         ORDER BY id ASC
@@ -194,7 +189,6 @@ def _serialize_restaurant_row(row):
         "isActive": row["is_active"],
         "createdAt": row["created_at"].isoformat() if row.get("created_at") else None,
         "hasMenu": bool(row.get("menu_pdf_storage_name")),
-        "hasCustomFooter": bool((row.get("public_footer_text") or "").strip()),
         "hasGuestContact": bool(gc["address"] or gc["phone"] or gc["hours"]),
     }
 
@@ -202,30 +196,12 @@ def _serialize_restaurant_row(row):
 def get_restaurant_by_id(restaurant_id: int):
     return query_one(
         """
-        SELECT id, slug, display_name, password_hash, is_active, created_at, menu_pdf_storage_name, public_footer_text,
+        SELECT id, slug, display_name, password_hash, is_active, created_at, menu_pdf_storage_name,
                public_guest_address, public_guest_phone, public_guest_hours
         FROM restaurants
         WHERE id = %s
         """,
         (int(restaurant_id),),
-    )
-
-
-def normalize_public_footer_text(value) -> str | None:
-    if value is None:
-        return None
-    s = str(value).strip()
-    if not s:
-        return None
-    if len(s) > 4000:
-        raise ValueError("footer text must be at most 4000 characters")
-    return s
-
-
-def set_public_footer_text(restaurant_id: int, text: str | None) -> None:
-    execute(
-        "UPDATE restaurants SET public_footer_text = %s WHERE id = %s",
-        (text, int(restaurant_id)),
     )
 
 
@@ -297,7 +273,7 @@ def update_restaurant(restaurant_id: int, slug=None, display_name=None, password
         UPDATE restaurants
         SET {", ".join(sets)}
         WHERE id = %s
-        RETURNING id, slug, display_name, is_active, created_at, menu_pdf_storage_name, public_footer_text,
+        RETURNING id, slug, display_name, is_active, created_at, menu_pdf_storage_name,
                   public_guest_address, public_guest_phone, public_guest_hours
         """,
         tuple(vals),
@@ -316,7 +292,7 @@ def create_restaurant(slug: str, display_name: str, password: str):
         """
         INSERT INTO restaurants (slug, display_name, password_hash)
         VALUES (%s, %s, %s)
-        RETURNING id, slug, display_name, is_active, created_at, menu_pdf_storage_name, public_footer_text,
+        RETURNING id, slug, display_name, is_active, created_at, menu_pdf_storage_name,
                   public_guest_address, public_guest_phone, public_guest_hours
         """,
         (normalize_slug(slug), display_name.strip(), ph),

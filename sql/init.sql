@@ -18,7 +18,6 @@ VALUES (
 ON CONFLICT (id) DO NOTHING;
 
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS menu_pdf_storage_name TEXT NULL;
-ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS public_footer_text TEXT NULL;
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS public_guest_address TEXT NULL;
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS public_guest_phone TEXT NULL;
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS public_guest_hours TEXT NULL;
