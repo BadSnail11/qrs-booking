@@ -58,7 +58,7 @@ def resolved_menu_file_path(storage_name: str) -> str | None:
 def get_restaurant_by_slug(slug: str):
     return query_one(
         """
-        SELECT id, slug, display_name, password_hash, is_active, menu_pdf_storage_name
+        SELECT id, slug, display_name, password_hash, is_active, menu_pdf_storage_name, public_footer_text
         FROM restaurants
         WHERE slug = %s AND is_active = TRUE
         """,
@@ -74,19 +74,47 @@ def get_restaurant_id_by_slug(slug: str):
 def list_restaurants_public():
     rows = query_all(
         """
-        SELECT slug, display_name, menu_pdf_storage_name
+        SELECT id, slug, display_name, menu_pdf_storage_name, public_footer_text
         FROM restaurants
         WHERE is_active = TRUE
         ORDER BY display_name ASC, slug ASC
         """
     )
+    ids = [int(r["id"]) for r in rows]
+    interval_by_id = {i: [] for i in ids}
+    if ids:
+        iv_rows = query_all(
+            """
+            SELECT restaurant_id, date_start, date_end
+            FROM sets_choice_intervals
+            WHERE restaurant_id = ANY(%s)
+            ORDER BY restaurant_id, date_start, id
+            """,
+            (ids,),
+        )
+        for iv in iv_rows:
+            rid = int(iv["restaurant_id"])
+            if rid in interval_by_id:
+                interval_by_id[rid].append(
+                    {
+                        "dateStart": iv["date_start"].isoformat(),
+                        "dateEnd": iv["date_end"].isoformat(),
+                    }
+                )
     out = []
     for row in rows:
+        rid = int(row["id"])
         item = {"slug": row["slug"], "displayName": row["display_name"]}
         if row.get("menu_pdf_storage_name"):
             item["menuUrl"] = f"/v1/menus/{row['slug']}"
         else:
             item["menuUrl"] = None
+        ft = row.get("public_footer_text")
+        if ft and str(ft).strip():
+            item["footerText"] = str(ft).strip()
+        else:
+            item["footerText"] = None
+        item["setsChoiceIntervals"] = interval_by_id.get(rid, [])
         out.append(item)
     return out
 
@@ -94,7 +122,7 @@ def list_restaurants_public():
 def list_restaurants_all():
     rows = query_all(
         """
-        SELECT id, slug, display_name, is_active, created_at, menu_pdf_storage_name
+        SELECT id, slug, display_name, is_active, created_at, menu_pdf_storage_name, public_footer_text
         FROM restaurants
         ORDER BY id ASC
         """
@@ -117,17 +145,36 @@ def _serialize_restaurant_row(row):
         "isActive": row["is_active"],
         "createdAt": row["created_at"].isoformat() if row.get("created_at") else None,
         "hasMenu": bool(row.get("menu_pdf_storage_name")),
+        "hasCustomFooter": bool((row.get("public_footer_text") or "").strip()),
     }
 
 
 def get_restaurant_by_id(restaurant_id: int):
     return query_one(
         """
-        SELECT id, slug, display_name, password_hash, is_active, created_at, menu_pdf_storage_name
+        SELECT id, slug, display_name, password_hash, is_active, created_at, menu_pdf_storage_name, public_footer_text
         FROM restaurants
         WHERE id = %s
         """,
         (int(restaurant_id),),
+    )
+
+
+def normalize_public_footer_text(value) -> str | None:
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    if len(s) > 4000:
+        raise ValueError("footer text must be at most 4000 characters")
+    return s
+
+
+def set_public_footer_text(restaurant_id: int, text: str | None) -> None:
+    execute(
+        "UPDATE restaurants SET public_footer_text = %s WHERE id = %s",
+        (text, int(restaurant_id)),
     )
 
 
@@ -199,7 +246,7 @@ def update_restaurant(restaurant_id: int, slug=None, display_name=None, password
         UPDATE restaurants
         SET {", ".join(sets)}
         WHERE id = %s
-        RETURNING id, slug, display_name, is_active, created_at, menu_pdf_storage_name
+        RETURNING id, slug, display_name, is_active, created_at, menu_pdf_storage_name, public_footer_text
         """,
         tuple(vals),
     )
@@ -217,7 +264,7 @@ def create_restaurant(slug: str, display_name: str, password: str):
         """
         INSERT INTO restaurants (slug, display_name, password_hash)
         VALUES (%s, %s, %s)
-        RETURNING id, slug, display_name, is_active, created_at, menu_pdf_storage_name
+        RETURNING id, slug, display_name, is_active, created_at, menu_pdf_storage_name, public_footer_text
         """,
         (normalize_slug(slug), display_name.strip(), ph),
     )

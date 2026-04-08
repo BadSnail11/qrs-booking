@@ -13,11 +13,14 @@ from booking_service import (
     cancel_reservation,
     combine_date_time,
     create_reservation,
+    create_sets_choice_interval,
     delete_schedule_date_override,
+    delete_sets_choice_interval,
     get_reservation,
     list_active_tables,
     list_reservations,
     list_schedule_date_overrides,
+    list_sets_choice_intervals_for_restaurant,
     list_table_blocks,
     parse_iso_dt,
     reservations_analytics,
@@ -38,8 +41,10 @@ from restaurants import (
     get_menu_pdf_storage_name,
     list_restaurants_all,
     menu_upload_dir,
+    normalize_public_footer_text,
     resolved_menu_file_path,
     set_menu_pdf_storage_name,
+    set_public_footer_text,
     update_restaurant,
     verify_restaurant_login,
 )
@@ -372,6 +377,58 @@ def delete_menu_pdf():
     return jsonify({"hasMenu": False})
 
 
+@app.get("/api/v1/settings/public-footer")
+def get_public_footer():
+    row = get_restaurant_by_id(get_restaurant_id())
+    if not row:
+        return jsonify({"error": "Restaurant not found"}), 404
+    t = row.get("public_footer_text")
+    s = t.strip() if isinstance(t, str) else ""
+    return jsonify({"footerText": s if s else None})
+
+
+@app.get("/api/v1/settings/sets-choice-intervals")
+def get_sets_choice_intervals():
+    return jsonify(list_sets_choice_intervals_for_restaurant())
+
+
+@app.post("/api/v1/settings/sets-choice-intervals")
+def post_sets_choice_interval():
+    body = request.get_json(silent=True) or {}
+    try:
+        row = create_sets_choice_interval(
+            body.get("dateStart") or body.get("date_start", ""),
+            body.get("dateEnd") or body.get("date_end", ""),
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(row), 201
+
+
+@app.delete("/api/v1/settings/sets-choice-intervals/<int:interval_id>")
+def remove_sets_choice_interval(interval_id):
+    if not delete_sets_choice_interval(interval_id):
+        return jsonify({"error": "Interval not found"}), 404
+    return jsonify({"message": "deleted"})
+
+
+@app.patch("/api/v1/settings/public-footer")
+def patch_public_footer():
+    body = request.get_json(silent=True) or {}
+    raw = body.get("footerText")
+    if raw is None:
+        raw = body.get("footer_text")
+    try:
+        text = normalize_public_footer_text(raw)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    set_public_footer_text(get_restaurant_id(), text)
+    row = get_restaurant_by_id(get_restaurant_id())
+    t = row.get("public_footer_text") if row else None
+    s = t.strip() if isinstance(t, str) else ""
+    return jsonify({"footerText": s if s else None})
+
+
 @app.post("/api/v1/tables")
 def create_table():
     body = request.get_json(silent=True) or {}
@@ -589,6 +646,7 @@ def edit_reservation(reservation_id):
             body,
             force=bool(body.get("force", False)),
             allow_insufficient_capacity=True,
+            admin_edit=True,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400

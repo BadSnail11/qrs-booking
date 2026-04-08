@@ -10,7 +10,8 @@ export default async function AdminSettingsPage({
     params.tab === "schedule" ||
     params.tab === "telegram" ||
     params.tab === "menu" ||
-    params.tab === "dates"
+    params.tab === "dates" ||
+    params.tab === "sets"
       ? params.tab
       : "tables"
 

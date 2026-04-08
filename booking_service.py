@@ -5,7 +5,7 @@ import os
 import random
 import string
 import logging
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from openpyxl import Workbook
 from db import execute, execute_returning, query_all, query_one
@@ -20,6 +20,97 @@ MAX_EXTRA_SEATS = int(os.getenv("MAX_EXTRA_SEATS", "2"))
 MAX_PARTY_SIZE = 15
 MAX_SETS = 15
 logger = logging.getLogger(__name__)
+
+
+def _date_from_reservation_time(reservation_time):
+    if isinstance(reservation_time, datetime):
+        return reservation_time.date()
+    if isinstance(reservation_time, date):
+        return reservation_time
+    return parse_iso_dt(reservation_time).date()
+
+
+def date_in_sets_choice_intervals(restaurant_id: int, day: date) -> bool:
+    row = query_one(
+        """
+        SELECT 1 AS ok
+        FROM sets_choice_intervals
+        WHERE restaurant_id = %s
+          AND %s::date >= date_start
+          AND %s::date <= date_end
+        LIMIT 1
+        """,
+        (int(restaurant_id), day, day),
+    )
+    return row is not None
+
+
+def assert_sets_allowed_for_public_booking(restaurant_id: int, reservation_time, sets: int, created_by_admin: bool):
+    if created_by_admin or sets <= 0:
+        return
+    d = _date_from_reservation_time(reservation_time)
+    if not date_in_sets_choice_intervals(restaurant_id, d):
+        raise ValueError(
+            "Number of sets is only available for reservation dates in the periods configured by the restaurant"
+        )
+
+
+def list_sets_choice_intervals_for_restaurant():
+    rid = get_restaurant_id()
+    rows = query_all(
+        """
+        SELECT id, date_start, date_end
+        FROM sets_choice_intervals
+        WHERE restaurant_id = %s
+        ORDER BY date_start ASC, id ASC
+        """,
+        (rid,),
+    )
+    return [
+        {
+            "id": row["id"],
+            "dateStart": row["date_start"].isoformat(),
+            "dateEnd": row["date_end"].isoformat(),
+        }
+        for row in rows
+    ]
+
+
+def create_sets_choice_interval(date_start_str: str, date_end_str: str):
+    rid = get_restaurant_id()
+    try:
+        ds = datetime.strptime(date_start_str.strip(), "%Y-%m-%d").date()
+        de = datetime.strptime(date_end_str.strip(), "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError("date_start and date_end must be YYYY-MM-DD") from exc
+    if de < ds:
+        raise ValueError("date_end must be on or after date_start")
+    row = execute_returning(
+        """
+        INSERT INTO sets_choice_intervals (restaurant_id, date_start, date_end)
+        VALUES (%s, %s, %s)
+        RETURNING id, date_start, date_end
+        """,
+        (rid, ds, de),
+    )
+    return {
+        "id": row["id"],
+        "dateStart": row["date_start"].isoformat(),
+        "dateEnd": row["date_end"].isoformat(),
+    }
+
+
+def delete_sets_choice_interval(interval_id: int) -> bool:
+    rid = get_restaurant_id()
+    row = execute_returning(
+        """
+        DELETE FROM sets_choice_intervals
+        WHERE id = %s AND restaurant_id = %s
+        RETURNING id
+        """,
+        (int(interval_id), rid),
+    )
+    return row is not None
 
 
 def format_sets_display(sets):
@@ -538,6 +629,7 @@ def create_reservation(
         raise ValueError(f"guests must be between 1 and {MAX_PARTY_SIZE}")
     if sets < 0 or sets > MAX_SETS:
         raise ValueError(f"sets must be between 0 and {MAX_SETS}")
+    assert_sets_allowed_for_public_booking(rid, reservation_time, sets, created_by_admin)
     if table_ids:
         issues = validate_table_selection(table_ids, guests, reservation_time)
         if (
@@ -691,7 +783,9 @@ def get_slots_for_day(date_value, guests):
     return {"schedule": schedule, "slots": slots}
 
 
-def update_reservation(reservation_id, updates, force=False, allow_insufficient_capacity=False):
+def update_reservation(
+    reservation_id, updates, force=False, allow_insufficient_capacity=False, admin_edit=False
+):
     current = get_reservation(reservation_id, restaurant_id=get_restaurant_id())
     if not current:
         return None
@@ -719,6 +813,10 @@ def update_reservation(reservation_id, updates, force=False, allow_insufficient_
         raise ValueError(f"guests must be between 1 and {MAX_PARTY_SIZE}")
     if new_sets < 0 or new_sets > MAX_SETS:
         raise ValueError(f"sets must be between 0 and {MAX_SETS}")
+    if not admin_edit and new_sets > 0:
+        assert_sets_allowed_for_public_booking(
+            get_restaurant_id(), new_time, new_sets, created_by_admin=False
+        )
     new_email = updates.get("email", current["email"])
     new_phone = updates.get("phone", current["phone"])
     new_note = updates.get("note", current["note"])

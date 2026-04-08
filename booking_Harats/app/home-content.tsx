@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { BookingForm } from "@/components/booking-form"
 import { RestaurantPicker } from "@/components/restaurant-picker"
 import { userApi } from "@/lib/api"
+import type { SetsChoiceInterval } from "@/lib/booking-limits"
 import { FileText, ArrowUpRight } from "lucide-react"
 
 const USER_API_BASE = process.env.NEXT_PUBLIC_USER_API_URL || "/api/user"
@@ -34,12 +35,20 @@ function PickerLayout() {
   )
 }
 
+function defaultGuestFooterLine() {
+  return `© ${new Date().getFullYear()} Ресторан. Все права защищены.`
+}
+
 function BookingLayout({
   restaurantSlug,
   menuPdfHref,
+  footerLine,
+  setsChoiceIntervals,
 }: {
   restaurantSlug: string
   menuPdfHref: string | null
+  footerLine: string | null
+  setsChoiceIntervals: SetsChoiceInterval[]
 }) {
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -74,7 +83,7 @@ function BookingLayout({
         ) : null}
 
         <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
-          <BookingForm restaurantSlug={restaurantSlug} />
+          <BookingForm restaurantSlug={restaurantSlug} setsChoiceIntervals={setsChoiceIntervals} />
         </div>
       </main>
 
@@ -106,8 +115,8 @@ function BookingLayout({
       </div>
 
       <footer className="px-5 pb-8 pt-2">
-        <p className="text-center text-xs text-muted-foreground">
-          © 2026 Ресторан. Все права защищены.
+        <p className="text-center text-xs text-muted-foreground whitespace-pre-wrap">
+          {footerLine?.trim() ? footerLine.trim() : defaultGuestFooterLine()}
         </p>
       </footer>
     </div>
@@ -118,6 +127,8 @@ export function HomeContent() {
   const searchParams = useSearchParams()
   const restaurantSlug = useMemo(() => searchParams.get("restaurant")?.trim() ?? "", [searchParams])
   const [menuPdfHref, setMenuPdfHref] = useState<string | null>(null)
+  const [footerLine, setFooterLine] = useState<string | null>(null)
+  const [setsChoiceIntervals, setSetsChoiceIntervals] = useState<SetsChoiceInterval[]>([])
 
   useEffect(() => {
     if (!restaurantSlug) return
@@ -129,9 +140,15 @@ export function HomeContent() {
         const r = rows.find((x) => x.slug === restaurantSlug)
         const path = r?.menuUrl
         setMenuPdfHref(path ? `${USER_API_BASE}${path}` : null)
+        setFooterLine(r?.footerText ?? null)
+        setSetsChoiceIntervals(r?.setsChoiceIntervals ?? [])
       })
       .catch(() => {
-        if (!cancelled) setMenuPdfHref(null)
+        if (!cancelled) {
+          setMenuPdfHref(null)
+          setFooterLine(null)
+          setSetsChoiceIntervals([])
+        }
       })
     return () => {
       cancelled = true
@@ -142,5 +159,12 @@ export function HomeContent() {
     return <PickerLayout />
   }
 
-  return <BookingLayout restaurantSlug={restaurantSlug} menuPdfHref={menuPdfHref} />
+  return (
+    <BookingLayout
+      restaurantSlug={restaurantSlug}
+      menuPdfHref={menuPdfHref}
+      footerLine={footerLine}
+      setsChoiceIntervals={setsChoiceIntervals}
+    />
+  )
 }

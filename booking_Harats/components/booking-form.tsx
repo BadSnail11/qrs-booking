@@ -50,6 +50,7 @@ import {
   partySizeOptions,
   setsFormValueToApi,
   setCountOptions,
+  type SetsChoiceInterval,
 } from "@/lib/booking-limits"
 const USER_BOOKING_DRAFT_KEY = "qrs-user-booking-draft"
 const USER_BOOKING_HISTORY_COOKIE = "qrs-user-booking-history"
@@ -148,6 +149,7 @@ type SlugStatus = "loading" | "ok" | "invalid" | "error"
 
 export type BookingFormProps = {
   restaurantSlug: string
+  setsChoiceIntervals: SetsChoiceInterval[]
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
@@ -168,7 +170,7 @@ function getEmailError(email: string): string | null {
   return null
 }
 
-export function BookingForm({ restaurantSlug }: BookingFormProps) {
+export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingFormProps) {
   const [slugStatus, setSlugStatus] = useState<SlugStatus>("loading")
   const [restaurantDisplayName, setRestaurantDisplayName] = useState("")
   const [slugCheckRetryKey, setSlugCheckRetryKey] = useState(0)
@@ -198,19 +200,19 @@ export function BookingForm({ restaurantSlug }: BookingFormProps) {
 
   const dateValue = useMemo(() => (date ? format(date, "yyyy-MM-dd") : ""), [date])
   const isSetsChoiceAllowed = useMemo(
-    () => Boolean(date && isDateInSetsChoiceRange(date)),
-    [date]
+    () => Boolean(date && isDateInSetsChoiceRange(date, setsChoiceIntervals)),
+    [date, setsChoiceIntervals]
   )
   const setsSelectionOk = useMemo(() => {
     if (!date) return true
-    if (!isDateInSetsChoiceRange(date)) {
+    if (!isDateInSetsChoiceRange(date, setsChoiceIntervals)) {
       return formData.set === SETS_FORM_NONE
     }
     if (!formData.set) return false
     if (formData.set === SETS_FORM_NONE) return true
     const s = parseInt(formData.set, 10)
     return Number.isFinite(s) && s >= 1 && s <= MAX_SETS
-  }, [date, formData.set])
+  }, [date, formData.set, setsChoiceIntervals])
   const isReadyForTimeSelection = useMemo(
     () =>
       Boolean(
@@ -254,7 +256,7 @@ export function BookingForm({ restaurantSlug }: BookingFormProps) {
 
   useEffect(() => {
     draftAppliedForSlug.current = null
-  }, [restaurantSlug])
+  }, [restaurantSlug, setsChoiceIntervals])
 
   useEffect(() => {
     setSlugStatus("loading")
@@ -301,7 +303,9 @@ export function BookingForm({ restaurantSlug }: BookingFormProps) {
       const guestsRestored =
         Number.isFinite(g) && g >= 1 && g <= MAX_PARTY_SIZE ? String(g) : ""
       const restoredDate = draft.date ? new Date(`${draft.date}T00:00:00`) : undefined
-      const draftInSetsRange = restoredDate ? isDateInSetsChoiceRange(restoredDate) : false
+      const draftInSetsRange = restoredDate
+        ? isDateInSetsChoiceRange(restoredDate, setsChoiceIntervals)
+        : false
       let setRestored = ""
       if (draft.formData.set === SETS_FORM_NONE) {
         setRestored = SETS_FORM_NONE
@@ -321,7 +325,7 @@ export function BookingForm({ restaurantSlug }: BookingFormProps) {
     } catch {
       window.localStorage.removeItem(USER_BOOKING_DRAFT_KEY)
     }
-  }, [slugStatus, restaurantSlug])
+  }, [slugStatus, restaurantSlug, setsChoiceIntervals])
 
   useEffect(() => {
     if (typeof window === "undefined" || isSubmitted) return
@@ -335,7 +339,7 @@ export function BookingForm({ restaurantSlug }: BookingFormProps) {
 
   useEffect(() => {
     if (!date) return
-    if (!isDateInSetsChoiceRange(date)) {
+    if (!isDateInSetsChoiceRange(date, setsChoiceIntervals)) {
       setFormData((prev) => (prev.set !== SETS_FORM_NONE ? { ...prev, set: SETS_FORM_NONE } : prev))
       setFieldErrors((prev) => {
         if (!prev.set) return prev
@@ -344,7 +348,7 @@ export function BookingForm({ restaurantSlug }: BookingFormProps) {
         return next
       })
     }
-  }, [date])
+  }, [date, setsChoiceIntervals])
 
   useEffect(() => {
     if (date && formData.guests && restaurantSlug) {
@@ -387,7 +391,7 @@ export function BookingForm({ restaurantSlug }: BookingFormProps) {
       }
     }
     if (date) {
-      if (!isDateInSetsChoiceRange(date)) {
+      if (!isDateInSetsChoiceRange(date, setsChoiceIntervals)) {
         if (formData.set !== SETS_FORM_NONE) {
           e.set = "Выберите вариант сетов."
         }
@@ -461,7 +465,7 @@ export function BookingForm({ restaurantSlug }: BookingFormProps) {
 
     setIsLoading(true)
     try {
-      const setsPayload = setsFormValueToApi(formData.set, date)
+      const setsPayload = setsFormValueToApi(formData.set, date, setsChoiceIntervals)
       const result = await userApi.createReservation({
         restaurant: restaurantSlug,
         firstName: formData.firstName.trim(),
@@ -874,8 +878,12 @@ export function BookingForm({ restaurantSlug }: BookingFormProps) {
                   onSelect={(value) => {
                     clearFieldError("date")
                     setDate(value)
-                    const wasInSetsRange = date ? isDateInSetsChoiceRange(date) : false
-                    const nowInSetsRange = value ? isDateInSetsChoiceRange(value) : false
+                    const wasInSetsRange = date
+                      ? isDateInSetsChoiceRange(date, setsChoiceIntervals)
+                      : false
+                    const nowInSetsRange = value
+                      ? isDateInSetsChoiceRange(value, setsChoiceIntervals)
+                      : false
                     setFormData((prev) => {
                       let nextSet = prev.set
                       if (!value) {
@@ -948,7 +956,9 @@ export function BookingForm({ restaurantSlug }: BookingFormProps) {
               {fieldErrors.set && <p className="text-xs text-destructive">{fieldErrors.set}</p>}
               {date && !isSetsChoiceAllowed && (
                 <p className="text-xs text-muted-foreground">
-                  Количество сетов можно выбрать в период с 9 апреля 2026 по 26 апреля 2026 г.
+                  {setsChoiceIntervals.length === 0
+                    ? "Выбор количества сетов для этого ресторана не настроен."
+                    : "Для выбранной даты выбор сетов недоступен — только в датах из периодов, заданных в админке."}
                 </p>
               )}
             </div>

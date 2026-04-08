@@ -18,6 +18,7 @@ VALUES (
 ON CONFLICT (id) DO NOTHING;
 
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS menu_pdf_storage_name TEXT NULL;
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS public_footer_text TEXT NULL;
 
 SELECT setval(
     pg_get_serial_sequence('restaurants', 'id'),
@@ -128,6 +129,24 @@ CREATE TABLE IF NOT EXISTS schedule_date_overrides (
 
 CREATE INDEX IF NOT EXISTS idx_schedule_date_overrides_restaurant_date
     ON schedule_date_overrides (restaurant_id, override_date);
+
+CREATE TABLE IF NOT EXISTS sets_choice_intervals (
+    id SERIAL PRIMARY KEY,
+    restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    date_start DATE NOT NULL,
+    date_end DATE NOT NULL,
+    CHECK (date_end >= date_start)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sets_choice_intervals_restaurant
+    ON sets_choice_intervals (restaurant_id);
+
+INSERT INTO sets_choice_intervals (restaurant_id, date_start, date_end)
+SELECT 1, '2026-04-09', '2026-04-26'
+WHERE NOT EXISTS (
+    SELECT 1 FROM sets_choice_intervals i
+    WHERE i.restaurant_id = 1 AND i.date_start = '2026-04-09' AND i.date_end = '2026-04-26'
+);
 
 CREATE TABLE IF NOT EXISTS telegram_recipients (
     id SERIAL PRIMARY KEY,

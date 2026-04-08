@@ -5,13 +5,14 @@ import Link from "next/link"
 import { format, parseISO } from "date-fns"
 import { ru } from "date-fns/locale"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Armchair, CalendarRange, Clock3, FileText, Send } from "lucide-react"
+import { ArrowLeft, Armchair, CalendarRange, Clock3, FileText, Send, UtensilsCrossed } from "lucide-react"
 import { AdminLogoutButton } from "@/components/admin/admin-logout-button"
 import type { ScheduleDay, Table } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -44,6 +45,12 @@ type ScheduleOverrideRow = {
   closeTime: string | null
 }
 
+type SetsChoiceIntervalRow = {
+  id: number
+  dateStart: string
+  dateEnd: string
+}
+
 const dayLabels: Record<string, string> = {
   monday: "Понедельник",
   tuesday: "Вторник",
@@ -59,7 +66,7 @@ const TIME_24H_PATTERN = "^([01]\\d|2[0-3]):([0-5]\\d)$"
 export function AdminSettingsPageClient({
   initialTab,
 }: {
-  initialTab: "tables" | "schedule" | "dates" | "telegram" | "menu"
+  initialTab: "tables" | "schedule" | "dates" | "sets" | "telegram" | "menu"
 }) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState(initialTab)
@@ -88,6 +95,9 @@ export function AdminSettingsPageClient({
   const [menuError, setMenuError] = useState("")
   const [menuUploading, setMenuUploading] = useState(false)
   const [menuDeleting, setMenuDeleting] = useState(false)
+  const [publicFooterText, setPublicFooterText] = useState("")
+  const [savingFooter, setSavingFooter] = useState(false)
+  const [footerSettingsError, setFooterSettingsError] = useState("")
   const [scheduleOverrides, setScheduleOverrides] = useState<ScheduleOverrideRow[]>([])
   const [scheduleOverridesError, setScheduleOverridesError] = useState("")
   const [overrideFormDate, setOverrideFormDate] = useState("")
@@ -95,6 +105,11 @@ export function AdminSettingsPageClient({
   const [overrideFormOpenTime, setOverrideFormOpenTime] = useState("12:00")
   const [overrideFormCloseTime, setOverrideFormCloseTime] = useState("22:00")
   const [savingOverride, setSavingOverride] = useState(false)
+  const [setsChoiceIntervals, setSetsChoiceIntervals] = useState<SetsChoiceIntervalRow[]>([])
+  const [setsIntervalsError, setSetsIntervalsError] = useState("")
+  const [newSetsStart, setNewSetsStart] = useState("")
+  const [newSetsEnd, setNewSetsEnd] = useState("")
+  const [savingSetsInterval, setSavingSetsInterval] = useState(false)
 
   useEffect(() => {
     setActiveTab(initialTab)
@@ -104,13 +119,16 @@ export function AdminSettingsPageClient({
     setIsLoading(true)
     setError("")
     try {
-      const [tablesData, scheduleData, recipientsData, menuData, overridesData] = await Promise.all([
-        adminApi.getTables(format(new Date(), "yyyy-MM-dd")),
-        adminApi.getSchedule(),
-        adminApi.getTelegramRecipients(),
-        adminApi.getMenuSettings(),
-        adminApi.listScheduleOverrides(),
-      ])
+      const [tablesData, scheduleData, recipientsData, menuData, overridesData, footerData, setsData] =
+        await Promise.all([
+          adminApi.getTables(format(new Date(), "yyyy-MM-dd")),
+          adminApi.getSchedule(),
+          adminApi.getTelegramRecipients(),
+          adminApi.getMenuSettings(),
+          adminApi.listScheduleOverrides(),
+          adminApi.getPublicFooter(),
+          adminApi.getSetsChoiceIntervals(),
+        ])
       const nextTables = tablesData as Table[]
       const nextSchedule = scheduleData as ScheduleDay[]
       setTables(nextTables)
@@ -118,7 +136,9 @@ export function AdminSettingsPageClient({
       setRecipients(recipientsData as TelegramRecipient[])
       setMenuHas(Boolean(menuData.hasMenu))
       setMenuPublicPath(menuData.menuUrl)
+      setPublicFooterText(footerData.footerText ?? "")
       setScheduleOverrides(overridesData as ScheduleOverrideRow[])
+      setSetsChoiceIntervals(setsData as SetsChoiceIntervalRow[])
 
       const nextTableDrafts: Record<number, TableDraft> = {}
       nextTables.forEach((table) => {
@@ -157,6 +177,7 @@ export function AdminSettingsPageClient({
       tab !== "tables" &&
       tab !== "schedule" &&
       tab !== "dates" &&
+      tab !== "sets" &&
       tab !== "telegram" &&
       tab !== "menu"
     )
@@ -232,6 +253,70 @@ export function AdminSettingsPageClient({
       setMenuError(err instanceof Error ? err.message : "Не удалось удалить меню")
     } finally {
       setMenuDeleting(false)
+    }
+  }
+
+  const handleSavePublicFooter = async () => {
+    setFooterSettingsError("")
+    setSavingFooter(true)
+    try {
+      const r = await adminApi.patchPublicFooter({
+        footerText: publicFooterText.trim() || null,
+      })
+      setPublicFooterText(r.footerText ?? "")
+    } catch (err) {
+      setFooterSettingsError(
+        err instanceof Error ? err.message : "Не удалось сохранить текст подвала"
+      )
+    } finally {
+      setSavingFooter(false)
+    }
+  }
+
+  const handleResetPublicFooter = async () => {
+    setFooterSettingsError("")
+    setSavingFooter(true)
+    try {
+      const r = await adminApi.patchPublicFooter({ footerText: null })
+      setPublicFooterText(r.footerText ?? "")
+    } catch (err) {
+      setFooterSettingsError(
+        err instanceof Error ? err.message : "Не удалось сбросить текст подвала"
+      )
+    } finally {
+      setSavingFooter(false)
+    }
+  }
+
+  const handleAddSetsInterval = async () => {
+    if (!newSetsStart.trim() || !newSetsEnd.trim()) {
+      setSetsIntervalsError("Укажите даты начала и конца периода.")
+      return
+    }
+    setSetsIntervalsError("")
+    setSavingSetsInterval(true)
+    try {
+      await adminApi.createSetsChoiceInterval({
+        dateStart: newSetsStart.trim(),
+        dateEnd: newSetsEnd.trim(),
+      })
+      setSetsChoiceIntervals(await adminApi.getSetsChoiceIntervals())
+      setNewSetsStart("")
+      setNewSetsEnd("")
+    } catch (err) {
+      setSetsIntervalsError(err instanceof Error ? err.message : "Не удалось добавить период")
+    } finally {
+      setSavingSetsInterval(false)
+    }
+  }
+
+  const handleDeleteSetsInterval = async (id: number) => {
+    setSetsIntervalsError("")
+    try {
+      await adminApi.deleteSetsChoiceInterval(id)
+      setSetsChoiceIntervals(await adminApi.getSetsChoiceIntervals())
+    } catch (err) {
+      setSetsIntervalsError(err instanceof Error ? err.message : "Не удалось удалить период")
     }
   }
 
@@ -399,7 +484,7 @@ export function AdminSettingsPageClient({
             <div>
               <h1 className="text-2xl font-semibold">Настройки</h1>
               <p className="text-sm text-muted-foreground">
-                Столы, график, даты, меню PDF и Telegram
+                Столы, график, даты, сеты, меню PDF и Telegram
               </p>
             </div>
           </div>
@@ -433,6 +518,10 @@ export function AdminSettingsPageClient({
               <TabsTrigger value="dates">
                 <CalendarRange className="h-4 w-4" />
                 Даты
+              </TabsTrigger>
+              <TabsTrigger value="sets">
+                <UtensilsCrossed className="h-4 w-4" />
+                Сеты
               </TabsTrigger>
               <TabsTrigger value="telegram">
                 <Send className="h-4 w-4" />
@@ -708,6 +797,81 @@ export function AdminSettingsPageClient({
               </div>
             </TabsContent>
 
+            <TabsContent value="sets" className="space-y-6">
+              <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Укажите календарные периоды (включительно), когда гости на публичной странице бронирования могут выбрать
+                  количество сетов. Вне этих дат поле сетов скрыто, в API передаётся «без сетов» (0). Можно задать
+                  несколько непересекающихся или пересекающихся интервалов — достаточно попасть хотя бы в один.
+                </p>
+                <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                  <div className="space-y-2">
+                    <Label htmlFor="sets-start">Начало периода</Label>
+                    <Input
+                      id="sets-start"
+                      type="date"
+                      value={newSetsStart}
+                      onChange={(e) => setNewSetsStart(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sets-end">Конец периода</Label>
+                    <Input
+                      id="sets-end"
+                      type="date"
+                      value={newSetsEnd}
+                      onChange={(e) => setNewSetsEnd(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    className="w-full md:w-auto"
+                    disabled={savingSetsInterval}
+                    onClick={() => void handleAddSetsInterval()}
+                  >
+                    {savingSetsInterval ? "Добавление…" : "Добавить период"}
+                  </Button>
+                </div>
+                {setsIntervalsError && (
+                  <div className="text-sm text-destructive">{setsIntervalsError}</div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium">Текущие периоды</h3>
+                {setsChoiceIntervals.length === 0 ? (
+                  <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+                    Периоды не заданы — гости не смогут выбирать сеты.
+                  </div>
+                ) : (
+                  setsChoiceIntervals.map((row) => (
+                    <div
+                      key={row.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4"
+                    >
+                      <div className="text-sm">
+                        <span className="font-medium">
+                          {format(parseISO(row.dateStart), "d MMMM yyyy", { locale: ru })}
+                        </span>
+                        <span className="text-muted-foreground"> — </span>
+                        <span className="font-medium">
+                          {format(parseISO(row.dateEnd), "d MMMM yyyy", { locale: ru })}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => void handleDeleteSetsInterval(row.id)}
+                      >
+                        Удалить
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </TabsContent>
+
             <TabsContent value="telegram" className="space-y-6">
               <div className="rounded-xl border border-border bg-card p-4">
                 <div className="mb-4 text-sm font-medium">Добавить получателя</div>
@@ -798,6 +962,52 @@ export function AdminSettingsPageClient({
                   )}
                 </div>
                 {menuError && <div className="text-sm text-destructive">{menuError}</div>}
+              </div>
+
+              <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                <div>
+                  <p className="text-sm font-medium">Текст в подвале страницы бронирования</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Отображается внизу публичной страницы для гостей этого ресторана. Можно несколько строк.
+                    Если оставить пустым и сохранить — используется стандартная строка с копирайтом.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="public-footer">Текст подвала</Label>
+                  <Textarea
+                    id="public-footer"
+                    value={publicFooterText}
+                    onChange={(e) => setPublicFooterText(e.target.value)}
+                    placeholder={`© ${new Date().getFullYear()} Название. Все права защищены.`}
+                    rows={4}
+                    maxLength={4000}
+                    disabled={savingFooter}
+                    className="min-h-[100px] resize-y"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {publicFooterText.length}/4000 символов
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    disabled={savingFooter}
+                    onClick={() => void handleSavePublicFooter()}
+                  >
+                    {savingFooter ? "Сохранение…" : "Сохранить подвал"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={savingFooter}
+                    onClick={() => void handleResetPublicFooter()}
+                  >
+                    Стандартный текст
+                  </Button>
+                </div>
+                {footerSettingsError && (
+                  <div className="text-sm text-destructive">{footerSettingsError}</div>
+                )}
               </div>
             </TabsContent>
           </Tabs>

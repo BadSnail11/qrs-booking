@@ -1,5 +1,7 @@
 "use client"
 
+import type { SetsChoiceInterval } from "@/lib/booking-limits"
+
 const USER_API_URL = process.env.NEXT_PUBLIC_USER_API_URL || "/api/user"
 const ADMIN_API_URL = process.env.NEXT_PUBLIC_ADMIN_API_URL || "/api/admin"
 
@@ -65,6 +67,8 @@ export type PublicRestaurant = {
   slug: string
   displayName: string
   menuUrl: string | null
+  footerText: string | null
+  setsChoiceIntervals: SetsChoiceInterval[]
 }
 
 export const userApi = {
@@ -117,6 +121,33 @@ export const adminApi = {
   },
   getMenuSettings() {
     return request<{ hasMenu: boolean; menuUrl: string | null }>(ADMIN_API_URL, "/v1/settings/menu")
+  },
+  getPublicFooter() {
+    return request<{ footerText: string | null }>(ADMIN_API_URL, "/v1/settings/public-footer")
+  },
+  patchPublicFooter(body: { footerText: string | null }) {
+    return request<{ footerText: string | null }>(ADMIN_API_URL, "/v1/settings/public-footer", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    })
+  },
+  getSetsChoiceIntervals() {
+    return request<Array<{ id: number; dateStart: string; dateEnd: string }>>(
+      ADMIN_API_URL,
+      "/v1/settings/sets-choice-intervals"
+    )
+  },
+  createSetsChoiceInterval(body: { dateStart: string; dateEnd: string }) {
+    return request<{ id: number; dateStart: string; dateEnd: string }>(
+      ADMIN_API_URL,
+      "/v1/settings/sets-choice-intervals",
+      { method: "POST", body: JSON.stringify(body) }
+    )
+  },
+  deleteSetsChoiceInterval(id: number) {
+    return request<{ message: string }>(ADMIN_API_URL, `/v1/settings/sets-choice-intervals/${id}`, {
+      method: "DELETE",
+    })
   },
   uploadMenuPdf(file: File) {
     const fd = new FormData()
