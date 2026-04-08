@@ -63,11 +63,18 @@ async function userRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
+export type GuestContactPublic = {
+  address: string | null
+  phone: string | null
+  hours: string | null
+}
+
 export type PublicRestaurant = {
   slug: string
   displayName: string
   menuUrl: string | null
   footerText: string | null
+  guestContact: GuestContactPublic
   setsChoiceIntervals: SetsChoiceInterval[]
 }
 
@@ -127,6 +134,15 @@ export const adminApi = {
   },
   patchPublicFooter(body: { footerText: string | null }) {
     return request<{ footerText: string | null }>(ADMIN_API_URL, "/v1/settings/public-footer", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    })
+  },
+  getPublicGuestContact() {
+    return request<GuestContactPublic>(ADMIN_API_URL, "/v1/settings/public-guest-contact")
+  },
+  patchPublicGuestContact(body: { address: string | null; phone: string | null; hours: string | null }) {
+    return request<GuestContactPublic>(ADMIN_API_URL, "/v1/settings/public-guest-contact", {
       method: "PATCH",
       body: JSON.stringify(body),
     })

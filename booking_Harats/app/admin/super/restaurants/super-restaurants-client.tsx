@@ -23,6 +23,7 @@ type Row = {
   isActive: boolean
   hasMenu?: boolean
   hasCustomFooter?: boolean
+  hasGuestContact?: boolean
 }
 
 export function SuperRestaurantsClient() {
@@ -137,8 +138,11 @@ export function SuperRestaurantsClient() {
                   {r.hasMenu ? (
                     <span className="text-xs text-muted-foreground">· меню PDF</span>
                   ) : null}
+                  {r.hasGuestContact ? (
+                    <span className="text-xs text-muted-foreground">· контакты</span>
+                  ) : null}
                   {r.hasCustomFooter ? (
-                    <span className="text-xs text-muted-foreground">· подвал</span>
+                    <span className="text-xs text-muted-foreground">· копирайт</span>
                   ) : null}
                 </div>
               </div>

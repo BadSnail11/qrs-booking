@@ -5,6 +5,8 @@ from db import execute, execute_returning, query_all, query_one
 
 _MENU_STORAGE_RE = re.compile(r"^\d+_[a-f0-9]{16}\.pdf$")
 
+_MAX_GUEST_CONTACT_FIELD = 4000
+
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 
 PASSWORD_SALT = os.getenv("RESTAURANT_PASSWORD_SALT", "change-me-in-production").encode()
@@ -55,10 +57,53 @@ def resolved_menu_file_path(storage_name: str) -> str | None:
     return path if os.path.isfile(path) else None
 
 
+def guest_contact_public_dict(row) -> dict:
+    if not row:
+        return {"address": None, "phone": None, "hours": None}
+
+    def nz(key):
+        v = row.get(key)
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s if s else None
+
+    return {
+        "address": nz("public_guest_address"),
+        "phone": nz("public_guest_phone"),
+        "hours": nz("public_guest_hours"),
+    }
+
+
+def normalize_guest_contact_field(value) -> str | None:
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    if len(s) > _MAX_GUEST_CONTACT_FIELD:
+        raise ValueError(f"guest contact field must be at most {_MAX_GUEST_CONTACT_FIELD} characters")
+    return s
+
+
+def set_public_guest_contact(restaurant_id: int, address, phone, hours) -> None:
+    execute(
+        """
+        UPDATE restaurants
+        SET public_guest_address = %s,
+            public_guest_phone = %s,
+            public_guest_hours = %s
+        WHERE id = %s
+        """,
+        (address, phone, hours, int(restaurant_id)),
+    )
+
+
 def get_restaurant_by_slug(slug: str):
     return query_one(
         """
-        SELECT id, slug, display_name, password_hash, is_active, menu_pdf_storage_name, public_footer_text
+        SELECT id, slug, display_name, password_hash, is_active, menu_pdf_storage_name, public_footer_text,
+               public_guest_address, public_guest_phone, public_guest_hours
         FROM restaurants
         WHERE slug = %s AND is_active = TRUE
         """,
@@ -74,7 +119,8 @@ def get_restaurant_id_by_slug(slug: str):
 def list_restaurants_public():
     rows = query_all(
         """
-        SELECT id, slug, display_name, menu_pdf_storage_name, public_footer_text
+        SELECT id, slug, display_name, menu_pdf_storage_name, public_footer_text,
+               public_guest_address, public_guest_phone, public_guest_hours
         FROM restaurants
         WHERE is_active = TRUE
         ORDER BY display_name ASC, slug ASC
@@ -115,6 +161,7 @@ def list_restaurants_public():
         else:
             item["footerText"] = None
         item["setsChoiceIntervals"] = interval_by_id.get(rid, [])
+        item["guestContact"] = guest_contact_public_dict(row)
         out.append(item)
     return out
 
@@ -122,7 +169,8 @@ def list_restaurants_public():
 def list_restaurants_all():
     rows = query_all(
         """
-        SELECT id, slug, display_name, is_active, created_at, menu_pdf_storage_name, public_footer_text
+        SELECT id, slug, display_name, is_active, created_at, menu_pdf_storage_name, public_footer_text,
+               public_guest_address, public_guest_phone, public_guest_hours
         FROM restaurants
         ORDER BY id ASC
         """
@@ -138,6 +186,7 @@ def verify_restaurant_login(login: str, password: str):
 
 
 def _serialize_restaurant_row(row):
+    gc = guest_contact_public_dict(row)
     return {
         "id": row["id"],
         "slug": row["slug"],
@@ -146,13 +195,15 @@ def _serialize_restaurant_row(row):
         "createdAt": row["created_at"].isoformat() if row.get("created_at") else None,
         "hasMenu": bool(row.get("menu_pdf_storage_name")),
         "hasCustomFooter": bool((row.get("public_footer_text") or "").strip()),
+        "hasGuestContact": bool(gc["address"] or gc["phone"] or gc["hours"]),
     }
 
 
 def get_restaurant_by_id(restaurant_id: int):
     return query_one(
         """
-        SELECT id, slug, display_name, password_hash, is_active, created_at, menu_pdf_storage_name, public_footer_text
+        SELECT id, slug, display_name, password_hash, is_active, created_at, menu_pdf_storage_name, public_footer_text,
+               public_guest_address, public_guest_phone, public_guest_hours
         FROM restaurants
         WHERE id = %s
         """,
@@ -246,7 +297,8 @@ def update_restaurant(restaurant_id: int, slug=None, display_name=None, password
         UPDATE restaurants
         SET {", ".join(sets)}
         WHERE id = %s
-        RETURNING id, slug, display_name, is_active, created_at, menu_pdf_storage_name, public_footer_text
+        RETURNING id, slug, display_name, is_active, created_at, menu_pdf_storage_name, public_footer_text,
+                  public_guest_address, public_guest_phone, public_guest_hours
         """,
         tuple(vals),
     )
@@ -264,7 +316,8 @@ def create_restaurant(slug: str, display_name: str, password: str):
         """
         INSERT INTO restaurants (slug, display_name, password_hash)
         VALUES (%s, %s, %s)
-        RETURNING id, slug, display_name, is_active, created_at, menu_pdf_storage_name, public_footer_text
+        RETURNING id, slug, display_name, is_active, created_at, menu_pdf_storage_name, public_footer_text,
+                  public_guest_address, public_guest_phone, public_guest_hours
         """,
         (normalize_slug(slug), display_name.strip(), ph),
     )

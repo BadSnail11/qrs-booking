@@ -39,12 +39,15 @@ from restaurants import (
     create_restaurant,
     get_restaurant_by_id,
     get_menu_pdf_storage_name,
+    guest_contact_public_dict,
     list_restaurants_all,
     menu_upload_dir,
+    normalize_guest_contact_field,
     normalize_public_footer_text,
     resolved_menu_file_path,
     set_menu_pdf_storage_name,
     set_public_footer_text,
+    set_public_guest_contact,
     update_restaurant,
     verify_restaurant_login,
 )
@@ -427,6 +430,36 @@ def patch_public_footer():
     t = row.get("public_footer_text") if row else None
     s = t.strip() if isinstance(t, str) else ""
     return jsonify({"footerText": s if s else None})
+
+
+@app.get("/api/v1/settings/public-guest-contact")
+def get_public_guest_contact():
+    row = get_restaurant_by_id(get_restaurant_id())
+    if not row:
+        return jsonify({"error": "Restaurant not found"}), 404
+    return jsonify(guest_contact_public_dict(row))
+
+
+@app.patch("/api/v1/settings/public-guest-contact")
+def patch_public_guest_contact():
+    body = request.get_json(silent=True) or {}
+    row = get_restaurant_by_id(get_restaurant_id())
+    if not row:
+        return jsonify({"error": "Restaurant not found"}), 404
+    current = guest_contact_public_dict(row)
+    address, phone, hours = current["address"], current["phone"], current["hours"]
+    try:
+        if "address" in body:
+            address = normalize_guest_contact_field(body.get("address"))
+        if "phone" in body:
+            phone = normalize_guest_contact_field(body.get("phone"))
+        if "hours" in body:
+            hours = normalize_guest_contact_field(body.get("hours"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    set_public_guest_contact(get_restaurant_id(), address, phone, hours)
+    row = get_restaurant_by_id(get_restaurant_id())
+    return jsonify(guest_contact_public_dict(row))
 
 
 @app.post("/api/v1/tables")

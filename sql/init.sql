@@ -19,6 +19,19 @@ ON CONFLICT (id) DO NOTHING;
 
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS menu_pdf_storage_name TEXT NULL;
 ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS public_footer_text TEXT NULL;
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS public_guest_address TEXT NULL;
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS public_guest_phone TEXT NULL;
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS public_guest_hours TEXT NULL;
+
+UPDATE restaurants
+SET
+    public_guest_address = 'ул. Карла Маркса, 24',
+    public_guest_phone = '+375 44 762-55-46',
+    public_guest_hours = E'пн-чт 12:00-2:00\nпт 12:00-4:00\nсб 14:00-4:00\nвс 14:00-2:00'
+WHERE id = 1
+  AND (public_guest_address IS NULL OR TRIM(public_guest_address) = '')
+  AND (public_guest_phone IS NULL OR TRIM(public_guest_phone) = '')
+  AND (public_guest_hours IS NULL OR TRIM(public_guest_hours) = '');
 
 SELECT setval(
     pg_get_serial_sequence('restaurants', 'id'),

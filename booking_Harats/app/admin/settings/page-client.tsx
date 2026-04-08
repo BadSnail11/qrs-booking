@@ -98,6 +98,11 @@ export function AdminSettingsPageClient({
   const [publicFooterText, setPublicFooterText] = useState("")
   const [savingFooter, setSavingFooter] = useState(false)
   const [footerSettingsError, setFooterSettingsError] = useState("")
+  const [guestContactAddress, setGuestContactAddress] = useState("")
+  const [guestContactPhone, setGuestContactPhone] = useState("")
+  const [guestContactHours, setGuestContactHours] = useState("")
+  const [savingGuestContact, setSavingGuestContact] = useState(false)
+  const [guestContactSettingsError, setGuestContactSettingsError] = useState("")
   const [scheduleOverrides, setScheduleOverrides] = useState<ScheduleOverrideRow[]>([])
   const [scheduleOverridesError, setScheduleOverridesError] = useState("")
   const [overrideFormDate, setOverrideFormDate] = useState("")
@@ -119,16 +124,25 @@ export function AdminSettingsPageClient({
     setIsLoading(true)
     setError("")
     try {
-      const [tablesData, scheduleData, recipientsData, menuData, overridesData, footerData, setsData] =
-        await Promise.all([
-          adminApi.getTables(format(new Date(), "yyyy-MM-dd")),
-          adminApi.getSchedule(),
-          adminApi.getTelegramRecipients(),
-          adminApi.getMenuSettings(),
-          adminApi.listScheduleOverrides(),
-          adminApi.getPublicFooter(),
-          adminApi.getSetsChoiceIntervals(),
-        ])
+      const [
+        tablesData,
+        scheduleData,
+        recipientsData,
+        menuData,
+        overridesData,
+        footerData,
+        guestContactData,
+        setsData,
+      ] = await Promise.all([
+        adminApi.getTables(format(new Date(), "yyyy-MM-dd")),
+        adminApi.getSchedule(),
+        adminApi.getTelegramRecipients(),
+        adminApi.getMenuSettings(),
+        adminApi.listScheduleOverrides(),
+        adminApi.getPublicFooter(),
+        adminApi.getPublicGuestContact(),
+        adminApi.getSetsChoiceIntervals(),
+      ])
       const nextTables = tablesData as Table[]
       const nextSchedule = scheduleData as ScheduleDay[]
       setTables(nextTables)
@@ -137,6 +151,9 @@ export function AdminSettingsPageClient({
       setMenuHas(Boolean(menuData.hasMenu))
       setMenuPublicPath(menuData.menuUrl)
       setPublicFooterText(footerData.footerText ?? "")
+      setGuestContactAddress(guestContactData.address ?? "")
+      setGuestContactPhone(guestContactData.phone ?? "")
+      setGuestContactHours(guestContactData.hours ?? "")
       setScheduleOverrides(overridesData as ScheduleOverrideRow[])
       setSetsChoiceIntervals(setsData as SetsChoiceIntervalRow[])
 
@@ -266,7 +283,7 @@ export function AdminSettingsPageClient({
       setPublicFooterText(r.footerText ?? "")
     } catch (err) {
       setFooterSettingsError(
-        err instanceof Error ? err.message : "Не удалось сохранить текст подвала"
+        err instanceof Error ? err.message : "Не удалось сохранить строку копирайта"
       )
     } finally {
       setSavingFooter(false)
@@ -281,10 +298,52 @@ export function AdminSettingsPageClient({
       setPublicFooterText(r.footerText ?? "")
     } catch (err) {
       setFooterSettingsError(
-        err instanceof Error ? err.message : "Не удалось сбросить текст подвала"
+        err instanceof Error ? err.message : "Не удалось сбросить строку копирайта"
       )
     } finally {
       setSavingFooter(false)
+    }
+  }
+
+  const handleSaveGuestContact = async () => {
+    setGuestContactSettingsError("")
+    setSavingGuestContact(true)
+    try {
+      const r = await adminApi.patchPublicGuestContact({
+        address: guestContactAddress.trim() || null,
+        phone: guestContactPhone.trim() || null,
+        hours: guestContactHours.trim() || null,
+      })
+      setGuestContactAddress(r.address ?? "")
+      setGuestContactPhone(r.phone ?? "")
+      setGuestContactHours(r.hours ?? "")
+    } catch (err) {
+      setGuestContactSettingsError(
+        err instanceof Error ? err.message : "Не удалось сохранить контакты для гостей"
+      )
+    } finally {
+      setSavingGuestContact(false)
+    }
+  }
+
+  const handleClearGuestContact = async () => {
+    setGuestContactSettingsError("")
+    setSavingGuestContact(true)
+    try {
+      const r = await adminApi.patchPublicGuestContact({
+        address: null,
+        phone: null,
+        hours: null,
+      })
+      setGuestContactAddress(r.address ?? "")
+      setGuestContactPhone(r.phone ?? "")
+      setGuestContactHours(r.hours ?? "")
+    } catch (err) {
+      setGuestContactSettingsError(
+        err instanceof Error ? err.message : "Не удалось очистить контакты"
+      )
+    } finally {
+      setSavingGuestContact(false)
     }
   }
 
@@ -966,14 +1025,79 @@ export function AdminSettingsPageClient({
 
               <div className="rounded-xl border border-border bg-card p-4 space-y-4">
                 <div>
-                  <p className="text-sm font-medium">Текст в подвале страницы бронирования</p>
+                  <p className="text-sm font-medium">Контакты на странице бронирования</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Отображается внизу публичной страницы для гостей этого ресторана. Можно несколько строк.
-                    Если оставить пустым и сохранить — используется стандартная строка с копирайтом.
+                    Блок с адресом, телефоном и режимом работы под формой. Показывается гостям только если
+                    заполнено хотя бы одно поле. Пустые поля в блоке не отображаются.
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="public-footer">Текст подвала</Label>
+                  <Label htmlFor="guest-contact-address">Адрес</Label>
+                  <Input
+                    id="guest-contact-address"
+                    value={guestContactAddress}
+                    onChange={(e) => setGuestContactAddress(e.target.value)}
+                    placeholder="ул. Примерная, 1"
+                    maxLength={4000}
+                    disabled={savingGuestContact}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="guest-contact-phone">Телефон</Label>
+                  <Input
+                    id="guest-contact-phone"
+                    value={guestContactPhone}
+                    onChange={(e) => setGuestContactPhone(e.target.value)}
+                    placeholder="+375 …"
+                    maxLength={4000}
+                    disabled={savingGuestContact}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="guest-contact-hours">Режим работы</Label>
+                  <Textarea
+                    id="guest-contact-hours"
+                    value={guestContactHours}
+                    onChange={(e) => setGuestContactHours(e.target.value)}
+                    placeholder={"пн–чт 12:00–22:00\nпт …"}
+                    rows={5}
+                    maxLength={4000}
+                    disabled={savingGuestContact}
+                    className="min-h-[100px] resize-y font-mono text-sm"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    disabled={savingGuestContact}
+                    onClick={() => void handleSaveGuestContact()}
+                  >
+                    {savingGuestContact ? "Сохранение…" : "Сохранить контакты"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={savingGuestContact}
+                    onClick={() => void handleClearGuestContact()}
+                  >
+                    Скрыть блок у гостей
+                  </Button>
+                </div>
+                {guestContactSettingsError && (
+                  <div className="text-sm text-destructive">{guestContactSettingsError}</div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+                <div>
+                  <p className="text-sm font-medium">Строка копирайта внизу страницы</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Мелкий текст под всей страницей бронирования. Можно несколько строк. Если оставить пустым
+                    и сохранить — подставится стандартная строка © и год.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="public-footer">Текст копирайта</Label>
                   <Textarea
                     id="public-footer"
                     value={publicFooterText}
@@ -994,7 +1118,7 @@ export function AdminSettingsPageClient({
                     disabled={savingFooter}
                     onClick={() => void handleSavePublicFooter()}
                   >
-                    {savingFooter ? "Сохранение…" : "Сохранить подвал"}
+                    {savingFooter ? "Сохранение…" : "Сохранить копирайт"}
                   </Button>
                   <Button
                     type="button"

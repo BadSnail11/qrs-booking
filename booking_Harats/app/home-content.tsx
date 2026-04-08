@@ -4,11 +4,29 @@ import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { BookingForm } from "@/components/booking-form"
 import { RestaurantPicker } from "@/components/restaurant-picker"
-import { userApi } from "@/lib/api"
+import { userApi, type GuestContactPublic } from "@/lib/api"
 import type { SetsChoiceInterval } from "@/lib/booking-limits"
 import { FileText, ArrowUpRight } from "lucide-react"
 
 const USER_API_BASE = process.env.NEXT_PUBLIC_USER_API_URL || "/api/user"
+
+function guestPhoneHref(phone: string): string {
+  const t = phone.trim()
+  const compact = t.replace(/[\s().-]/g, "")
+  if (compact.startsWith("+")) {
+    return `tel:${compact}`
+  }
+  const digits = t.replace(/\D/g, "")
+  if (digits.length >= 8) {
+    return `tel:+${digits}`
+  }
+  return `tel:${encodeURIComponent(t)}`
+}
+
+function hasGuestContactBlock(c: GuestContactPublic | null | undefined): boolean {
+  if (!c) return false
+  return Boolean((c.address && c.address.trim()) || (c.phone && c.phone.trim()) || (c.hours && c.hours.trim()))
+}
 
 function PickerLayout() {
   return (
@@ -43,11 +61,13 @@ function BookingLayout({
   restaurantSlug,
   menuPdfHref,
   footerLine,
+  guestContact,
   setsChoiceIntervals,
 }: {
   restaurantSlug: string
   menuPdfHref: string | null
   footerLine: string | null
+  guestContact: GuestContactPublic | null
   setsChoiceIntervals: SetsChoiceInterval[]
 }) {
   return (
@@ -87,32 +107,40 @@ function BookingLayout({
         </div>
       </main>
 
-      <div className="mt-8 px-5 pb-6">
-        <div className="rounded-2xl bg-primary p-5 text-primary-foreground">
-          <p className="mb-4 text-xs font-medium uppercase tracking-widest opacity-70">Контакты</p>
-          <div className="space-y-3">
-            <div className="flex items-start justify-between">
-              <span className="text-sm opacity-70">Адрес</span>
-              <span className="text-right text-sm font-medium">ул. Карла Маркса, 24</span>
-            </div>
-            <div className="flex items-start justify-between">
-              <span className="text-sm opacity-70">Телефон</span>
-              <a
-                href="tel:+375447625546"
-                className="text-sm font-medium underline underline-offset-2"
-              >
-                +375 44 762-55-46
-              </a>
-            </div>
-            <div className="flex items-start justify-between">
-              <span className="text-sm opacity-70">Режим заведения</span>
-              <span className="text-right text-sm font-medium whitespace-pre-line">
-                {"пн-чт 12:00-2:00\nпт 12:00-4:00\nсб 14:00-4:00\nвс 14:00-2:00"}
-              </span>
+      {hasGuestContactBlock(guestContact) ? (
+        <div className="mt-8 px-5 pb-6">
+          <div className="rounded-2xl bg-primary p-5 text-primary-foreground">
+            <p className="mb-4 text-xs font-medium uppercase tracking-widest opacity-70">Контакты</p>
+            <div className="space-y-3">
+              {guestContact!.address?.trim() ? (
+                <div className="flex items-start justify-between gap-4">
+                  <span className="shrink-0 text-sm opacity-70">Адрес</span>
+                  <span className="text-right text-sm font-medium">{guestContact!.address.trim()}</span>
+                </div>
+              ) : null}
+              {guestContact!.phone?.trim() ? (
+                <div className="flex items-start justify-between gap-4">
+                  <span className="shrink-0 text-sm opacity-70">Телефон</span>
+                  <a
+                    href={guestPhoneHref(guestContact!.phone)}
+                    className="text-right text-sm font-medium underline underline-offset-2"
+                  >
+                    {guestContact!.phone.trim()}
+                  </a>
+                </div>
+              ) : null}
+              {guestContact!.hours?.trim() ? (
+                <div className="flex items-start justify-between gap-4">
+                  <span className="shrink-0 text-sm opacity-70">Режим заведения</span>
+                  <span className="text-right text-sm font-medium whitespace-pre-line">
+                    {guestContact!.hours.trim()}
+                  </span>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       <footer className="px-5 pb-8 pt-2">
         <p className="text-center text-xs text-muted-foreground whitespace-pre-wrap">
@@ -128,6 +156,7 @@ export function HomeContent() {
   const restaurantSlug = useMemo(() => searchParams.get("restaurant")?.trim() ?? "", [searchParams])
   const [menuPdfHref, setMenuPdfHref] = useState<string | null>(null)
   const [footerLine, setFooterLine] = useState<string | null>(null)
+  const [guestContact, setGuestContact] = useState<GuestContactPublic | null>(null)
   const [setsChoiceIntervals, setSetsChoiceIntervals] = useState<SetsChoiceInterval[]>([])
 
   useEffect(() => {
@@ -141,12 +170,14 @@ export function HomeContent() {
         const path = r?.menuUrl
         setMenuPdfHref(path ? `${USER_API_BASE}${path}` : null)
         setFooterLine(r?.footerText ?? null)
+        setGuestContact(r?.guestContact ?? null)
         setSetsChoiceIntervals(r?.setsChoiceIntervals ?? [])
       })
       .catch(() => {
         if (!cancelled) {
           setMenuPdfHref(null)
           setFooterLine(null)
+          setGuestContact(null)
           setSetsChoiceIntervals([])
         }
       })
@@ -164,6 +195,7 @@ export function HomeContent() {
       restaurantSlug={restaurantSlug}
       menuPdfHref={menuPdfHref}
       footerLine={footerLine}
+      guestContact={guestContact}
       setsChoiceIntervals={setsChoiceIntervals}
     />
   )
