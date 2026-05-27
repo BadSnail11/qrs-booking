@@ -8,7 +8,9 @@ import { AdminHeader } from "@/components/admin/admin-header"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { BlockTableModal } from "@/components/admin/block-table-modal"
 import { ReservationStatusBadge } from "@/components/admin/reservation-status-badge"
+import { ReservationArrivalControls } from "@/components/admin/reservation-arrival-controls"
 import { TablesGrid } from "@/components/admin/tables-grid"
+import { normalizeBooking } from "@/lib/arrival-status"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { adminApi } from "@/lib/api"
@@ -25,12 +27,54 @@ export type Booking = {
   sets: number
   date: string
   time: string
+  endDate?: string
   endTime: string
+  reservation_time?: string
   tableId: number
   table_ids?: number[]
   note?: string
   status: "confirmed" | "pending" | "cancelled"
+  arrivalStatus?: "arrived" | "no_show" | null
   color: string
+}
+
+export type TableShape = "square" | "rectangle" | "circle" | "corner"
+
+export type TableLayout = {
+  x: number
+  y: number
+  w: number
+  h: number
+  rotation: number
+  shape?: TableShape
+}
+
+export type FloorPlanRoom = {
+  id: string
+  name: string
+  x: number
+  y: number
+  w: number
+  h: number
+  rotation?: number
+}
+
+export type FloorPlanExit = {
+  id: string
+  label: string
+  x: number
+  y: number
+  w: number
+  h: number
+  rotation?: number
+}
+
+export type FloorPlanBar = { x: number; y: number; w: number; h: number; label: string; rotation?: number }
+
+export type FloorPlanAnnotations = {
+  rooms: FloorPlanRoom[]
+  exits: FloorPlanExit[]
+  bar: FloorPlanBar | null
 }
 
 export type Table = {
@@ -41,6 +85,8 @@ export type Table = {
   isActive?: boolean
   canUnite?: boolean
   uniteWithTableId?: number | null
+  layoutShape?: TableShape
+  layout?: TableLayout | null
   isBlocked?: boolean
   blockedUntil?: string
   blockedReason?: string
@@ -110,7 +156,7 @@ export default function AdminPage() {
         adminApi.getReservations(undefined, searchQuery || undefined),
       ])
       setTables(tablesData as Table[])
-      setBookings(bookingsData as Booking[])
+      setBookings((bookingsData as Record<string, unknown>[]).map((row) => normalizeBooking(row)))
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить данные")
     }
@@ -266,6 +312,10 @@ export default function AdminPage() {
     router.push(`/admin/reservations/${booking.id}/edit?${params.toString()}`)
   }
 
+  const handleReservationUpdated = (updated: Booking) => {
+    setBookings((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
+  }
+
   const handleBlockTable = (table: Table) => {
     setSelectedTable(table)
     setIsBlockModalOpen(true)
@@ -419,48 +469,55 @@ export default function AdminPage() {
                 </div>
               ) : (
                 listBookings.map((booking) => (
-                  <button
+                  <div
                     key={booking.id}
-                    onClick={() => handleEditBooking(booking)}
-                    className={cn(
-                      "w-full rounded-xl border-l-4 p-4 text-left transition-colors hover:opacity-80",
-                      booking.color
-                    )}
+                    className={cn("w-full overflow-hidden rounded-xl border-l-4 p-4 text-left", booking.color)}
                   >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={cn(
-                              "h-3 w-3 shrink-0 rounded-full ring-2 ring-white/70",
-                              getReservationColorIndexClass(booking.status)
-                            )}
-                            aria-hidden="true"
-                          />
-                          <div className="font-medium">
-                            {booking.firstName} {booking.lastName}
+                    <button
+                      type="button"
+                      onClick={() => handleEditBooking(booking)}
+                      className="w-full min-w-0 text-left transition-colors hover:opacity-80"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                "h-3 w-3 shrink-0 rounded-full ring-2 ring-white/70",
+                                getReservationColorIndexClass(booking.status)
+                              )}
+                              aria-hidden="true"
+                            />
+                            <div className="font-medium">
+                              {booking.firstName} {booking.lastName}
+                            </div>
+                          </div>
+                          <div className="mt-1 text-sm text-muted-foreground">
+                            {booking.date} • {booking.time} - {booking.endTime}
+                          </div>
+                          <div className="mt-1 text-sm text-muted-foreground">
+                            {getTableLabel(booking)} • {booking.guests} гостей • {formatSetsLabel(booking.sets)}
                           </div>
                         </div>
-                        <div className="mt-1 text-sm text-muted-foreground">
-                          {booking.date} • {booking.time} - {booking.endTime}
-                        </div>
-                        <div className="mt-1 text-sm text-muted-foreground">
-                          {getTableLabel(booking)} • {booking.guests} гостей • {formatSetsLabel(booking.sets)}
-                        </div>
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        <div className="flex justify-start sm:justify-end">
+                        <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
                           <ReservationStatusBadge status={booking.status} />
+                          <div className="text-sm">{booking.phone}</div>
                         </div>
-                        <div>{booking.phone}</div>
                       </div>
-                    </div>
-                    {booking.note && (
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        {booking.note}
+                      {booking.note && (
+                        <div className="mt-2 text-xs text-muted-foreground">{booking.note}</div>
+                      )}
+                    </button>
+                    {booking.status === "confirmed" ? (
+                      <div className="mt-3 border-t border-black/10 pt-3 dark:border-white/10">
+                        <ReservationArrivalControls
+                          booking={booking}
+                          onUpdated={handleReservationUpdated}
+                          layout="block"
+                        />
                       </div>
-                    )}
-                  </button>
+                    ) : null}
+                  </div>
                 ))
               )}
             </div>
@@ -472,6 +529,7 @@ export default function AdminPage() {
               bookings={confirmedBookings}
               onEditBooking={handleEditBooking}
               onBlockTable={handleBlockTable}
+              onReservationUpdated={handleReservationUpdated}
             />
           </div>
         </main>

@@ -1,16 +1,19 @@
 import csv
 import io
+import json
 import itertools
 import os
 import random
 import string
 import logging
 from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from openpyxl import Workbook
 from db import execute, execute_returning, query_all, query_one
 from request_context import get_restaurant_id
 
+RESTAURANT_TZ = os.getenv("RESTAURANT_TZ", "Europe/Moscow")
 SLOT_MINUTES = int(os.getenv("SLOT_MINUTES", "120"))
 AVAILABILITY_STEP_MINUTES = int(os.getenv("AVAILABILITY_STEP_MINUTES", "30"))
 OPEN_HOUR = int(os.getenv("OPEN_HOUR", "11"))
@@ -133,6 +136,27 @@ WEEKDAY_NAMES = [
     "saturday",
     "sunday",
 ]
+
+
+def restaurant_tz():
+    return ZoneInfo(RESTAURANT_TZ)
+
+
+def restaurant_now():
+    """Naive local wall clock in restaurant TZ (matches reservation_time in DB)."""
+    return datetime.now(restaurant_tz()).replace(tzinfo=None)
+
+
+def reservation_slot_has_started(reservation_id, restaurant_id):
+    row = query_one(
+        """
+        SELECT reservation_time <= (timezone(%s, now()))::timestamp AS started
+        FROM reservations
+        WHERE id = %s AND restaurant_id = %s
+        """,
+        (RESTAURANT_TZ, reservation_id, restaurant_id),
+    )
+    return bool(row and row["started"])
 
 
 def parse_iso_dt(value):
@@ -439,9 +463,168 @@ def serialize_table_block(row):
     }
 
 
+def serialize_table_layout(row):
+    if row.get("layout_x") is None:
+        return None
+    return {
+        "x": float(row["layout_x"]),
+        "y": float(row["layout_y"]),
+        "w": float(row["layout_w"]),
+        "h": float(row["layout_h"]),
+        "rotation": float(row["layout_rotation"] or 0),
+    }
+
+
+LAYOUT_SHAPES = frozenset({"square", "rectangle", "circle", "corner"})
+
+
+def normalize_layout_shape(value):
+    if value is None:
+        return "rectangle"
+    s = str(value).strip().lower()
+    if s not in LAYOUT_SHAPES:
+        raise ValueError("layoutShape must be one of: square, rectangle, circle, corner")
+    return s
+
+
+def normalize_layout_for_db(layout):
+    """
+    Validates and clamps layout for storage. Positions/sizes are fractions of the hall (0..1).
+    Returns (layout_x, layout_y, layout_w, layout_h, layout_rotation) or all None to clear.
+    """
+    if layout is None:
+        return None, None, None, None, None
+    if not isinstance(layout, dict):
+        raise ValueError("layout must be an object")
+    x = float(layout.get("x", 0))
+    y = float(layout.get("y", 0))
+    w = float(layout.get("w", 0.1))
+    h = float(layout.get("h", 0.1))
+    rot = float(layout.get("rotation", 0))
+    if w < 0.02 or h < 0.02:
+        raise ValueError("layout width and height must be at least 0.02")
+    if w > 1 or h > 1:
+        raise ValueError("layout width and height must be at most 1")
+    x = max(0.0, min(1.0 - w, x))
+    y = max(0.0, min(1.0 - h, y))
+    rot = rot % 360
+    return x, y, w, h, rot
+
+
+def _clamp_rect_dict(obj, need_label=False):
+    if not isinstance(obj, dict):
+        raise ValueError("annotation must be an object")
+    x = float(obj.get("x", 0))
+    y = float(obj.get("y", 0))
+    w = float(obj.get("w", 0.1))
+    h = float(obj.get("h", 0.1))
+    if w < 0.02 or h < 0.02 or w > 1 or h > 1:
+        raise ValueError("annotation width and height must be between 0.02 and 1")
+    x = max(0.0, min(1.0 - w, x))
+    y = max(0.0, min(1.0 - h, y))
+    rot = float(obj.get("rotation", 0)) % 360
+    out = {"x": x, "y": y, "w": w, "h": h, "rotation": rot}
+    if need_label:
+        label = str(obj.get("label", "")).strip()[:80]
+        out["label"] = label
+    return out
+
+
+def validate_floor_plan_annotations(raw):
+    """
+    Normalizes rooms, exits, and optional bar for JSONB storage.
+    """
+    if raw is None:
+        return {"rooms": [], "exits": [], "bar": None}
+    if not isinstance(raw, dict):
+        raise ValueError("annotations must be an object")
+    out = {"rooms": [], "exits": [], "bar": None}
+    for room in raw.get("rooms") or []:
+        if not isinstance(room, dict):
+            raise ValueError("each room must be an object")
+        rid = str(room.get("id", "")).strip()[:64]
+        if not rid:
+            raise ValueError("each room must have an id")
+        name = str(room.get("name", "Зал")).strip()[:120] or "Зал"
+        r = _clamp_rect_dict(room, need_label=False)
+        out["rooms"].append({"id": rid, "name": name, **r})
+    for ex in raw.get("exits") or []:
+        if not isinstance(ex, dict):
+            raise ValueError("each exit must be an object")
+        eid = str(ex.get("id", "")).strip()[:64]
+        if not eid:
+            raise ValueError("each exit must have an id")
+        r = _clamp_rect_dict(ex, need_label=True)
+        out["exits"].append({"id": eid, **r})
+    bar = raw.get("bar")
+    if bar is not None:
+        if not isinstance(bar, dict):
+            raise ValueError("bar must be an object or null")
+        r = _clamp_rect_dict(bar, need_label=True)
+        out["bar"] = r
+    return out
+
+
+def annotations_to_public(obj):
+    if not obj:
+        return {"rooms": [], "exits": [], "bar": None}
+    if isinstance(obj, str):
+        obj = json.loads(obj)
+    if not isinstance(obj, dict):
+        return {"rooms": [], "exits": [], "bar": None}
+    rooms = []
+    for r in obj.get("rooms") or []:
+        if isinstance(r, dict) and r.get("id"):
+            rooms.append(
+                {
+                    "id": str(r["id"]),
+                    "name": str(r.get("name", "")),
+                    "x": float(r["x"]),
+                    "y": float(r["y"]),
+                    "w": float(r["w"]),
+                    "h": float(r["h"]),
+                    "rotation": float(r.get("rotation", 0)) % 360,
+                }
+            )
+    exits = []
+    for e in obj.get("exits") or []:
+        if isinstance(e, dict) and e.get("id"):
+            exits.append(
+                {
+                    "id": str(e["id"]),
+                    "label": str(e.get("label", "")),
+                    "x": float(e["x"]),
+                    "y": float(e["y"]),
+                    "w": float(e["w"]),
+                    "h": float(e["h"]),
+                    "rotation": float(e.get("rotation", 0)) % 360,
+                }
+            )
+    bar = obj.get("bar")
+    if isinstance(bar, dict):
+        bar = {
+            "x": float(bar["x"]),
+            "y": float(bar["y"]),
+            "w": float(bar["w"]),
+            "h": float(bar["h"]),
+            "label": str(bar.get("label", "")),
+            "rotation": float(bar.get("rotation", 0)) % 360,
+        }
+    else:
+        bar = None
+    return {"rooms": rooms, "exits": exits, "bar": bar}
+
+
 def serialize_table(row, blocks=None):
     blocks = blocks or []
     active_block = blocks[0] if blocks else None
+    try:
+        shape = normalize_layout_shape(row.get("layout_shape"))
+    except ValueError:
+        shape = "rectangle"
+    lay = serialize_table_layout(row)
+    if lay:
+        lay["shape"] = shape
     return {
         "id": row["id"],
         "name": row["name"],
@@ -451,6 +634,8 @@ def serialize_table(row, blocks=None):
         "isActive": row.get("is_active", True),
         "canUnite": row.get("can_unite", False),
         "uniteWithTableId": row.get("unite_with_table_id"),
+        "layoutShape": shape,
+        "layout": lay,
         "isBlocked": active_block is not None,
         "blockedUntil": active_block["end_time"].isoformat() if active_block else None,
         "blockedReason": active_block["reason"] if active_block else None,
@@ -621,6 +806,8 @@ def create_reservation(
     admin_note=None,
     force=False,
     restaurant_id=None,
+    offer_accepted_at=None,
+    offer_document=None,
 ):
     rid = int(restaurant_id) if restaurant_id is not None else get_restaurant_id()
     guests = int(guests)
@@ -654,9 +841,9 @@ def create_reservation(
         """
         INSERT INTO reservations (
             restaurant_id, customer_name, reservation_time, guests, sets, email, phone, note, status,
-            confirmation_code, created_by_admin, admin_note, updated_at
+            confirmation_code, created_by_admin, admin_note, offer_accepted_at, offer_document, updated_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
         RETURNING *
         """,
         (
@@ -672,6 +859,8 @@ def create_reservation(
             generate_confirmation_code(),
             created_by_admin,
             admin_note,
+            offer_accepted_at,
+            offer_document,
         ),
     )
 
@@ -700,6 +889,7 @@ def reservation_payload(row):
         "reservation_time": reservation_time.isoformat(),
         "date": reservation_time.date().isoformat(),
         "time": reservation_time.strftime("%H:%M"),
+        "endDate": end_time.date().isoformat(),
         "endTime": end_time.strftime("%H:%M"),
         "guests": row["guests"],
         "sets": row.get("sets", 1),
@@ -708,6 +898,8 @@ def reservation_payload(row):
         "phone": row["phone"],
         "note": row.get("note"),
         "status": row["status"],
+        "arrivalStatus": row.get("arrival_status"),
+        "arrived_at": row["arrived_at"].isoformat() if row.get("arrived_at") else None,
         "confirmation_code": row["confirmation_code"],
         "created_by_admin": row["created_by_admin"],
         "admin_note": row["admin_note"],
@@ -720,7 +912,98 @@ def reservation_payload(row):
     }
 
 
+def sync_arrival_status_for_time(restaurant_id=None):
+    """Keep arrival_status aligned with reservation window (no auto no-show after slot ends)."""
+    rid = int(restaurant_id) if restaurant_id is not None else get_restaurant_id()
+    local_now = "(timezone(%s, now()))::timestamp"
+    # Before slot: awaiting → NULL in DB
+    execute(
+        f"""
+        UPDATE reservations
+        SET arrival_status = NULL, arrived_at = NULL, updated_at = NOW()
+        WHERE restaurant_id = %s
+          AND status = 'confirmed'
+          AND arrival_status IS NOT NULL
+          AND reservation_time > {local_now}
+        """,
+        (rid, RESTAURANT_TZ),
+    )
+    # During slot: default to no_show until admin marks arrived
+    execute(
+        f"""
+        UPDATE reservations
+        SET arrival_status = 'no_show', updated_at = NOW()
+        WHERE restaurant_id = %s
+          AND status = 'confirmed'
+          AND arrival_status IS NULL
+          AND reservation_time <= {local_now}
+          AND reservation_time + (%s * INTERVAL '1 minute') >= {local_now}
+        """,
+        (rid, RESTAURANT_TZ, SLOT_MINUTES, RESTAURANT_TZ),
+    )
+
+
+def set_reservation_arrival_status(reservation_id, arrival_status, restaurant_id=None):
+    """Admin sets arrival_status: None (awaiting), 'arrived', or 'no_show'."""
+    rid = int(restaurant_id) if restaurant_id is not None else get_restaurant_id()
+    if arrival_status not in (None, "arrived", "no_show"):
+        raise ValueError("arrival_status must be null, 'arrived', or 'no_show'")
+
+    current = get_reservation(reservation_id, restaurant_id=rid)
+    if not current:
+        raise ValueError("Reservation not found")
+    if current["status"] != "confirmed":
+        raise ValueError("Only confirmed reservations have arrival status")
+
+    if arrival_status is not None and not reservation_slot_has_started(reservation_id, rid):
+        raise ValueError("Cannot set arrival status before the reservation slot starts")
+
+    if arrival_status == "arrived":
+        execute_returning(
+            """
+            UPDATE reservations
+            SET arrival_status = 'arrived',
+                arrived_at = NOW(),
+                updated_at = NOW()
+            WHERE id = %s AND restaurant_id = %s AND status = 'confirmed'
+            RETURNING id
+            """,
+            (reservation_id, rid),
+        )
+    elif arrival_status == "no_show":
+        execute_returning(
+            """
+            UPDATE reservations
+            SET arrival_status = 'no_show',
+                arrived_at = NULL,
+                updated_at = NOW()
+            WHERE id = %s AND restaurant_id = %s AND status = 'confirmed'
+            RETURNING id
+            """,
+            (reservation_id, rid),
+        )
+    else:
+        execute_returning(
+            """
+            UPDATE reservations
+            SET arrival_status = NULL,
+                arrived_at = NULL,
+                updated_at = NOW()
+            WHERE id = %s AND restaurant_id = %s AND status = 'confirmed'
+            RETURNING id
+            """,
+            (reservation_id, rid),
+        )
+    return get_reservation(reservation_id, restaurant_id=rid)
+
+
+def mark_reservation_arrived(reservation_id, restaurant_id=None):
+    return set_reservation_arrival_status(reservation_id, "arrived", restaurant_id=restaurant_id)
+
+
 def get_reservation(reservation_id, restaurant_id=None):
+    rid = int(restaurant_id) if restaurant_id is not None else get_restaurant_id()
+    sync_arrival_status_for_time(rid)
     rid_filter = ""
     params = [reservation_id]
     if restaurant_id is not None:
@@ -921,6 +1204,8 @@ def restore_cancelled_reservation(reservation_id):
         UPDATE reservations
         SET status = 'pending',
             cancelled_at = NULL,
+            arrival_status = NULL,
+            arrived_at = NULL,
             updated_at = NOW()
         WHERE id = %s
           AND restaurant_id = %s
@@ -943,6 +1228,7 @@ def delete_cancelled_reservation(reservation_id):
 
 
 def list_reservations(filters):
+    sync_arrival_status_for_time()
     conditions = ["r.restaurant_id = %s"]
     params = [get_restaurant_id()]
     if filters.get("status"):
@@ -1011,13 +1297,31 @@ def analytics_to_csv(analytics):
 
 
 def clients_database_to_xlsx():
-    rows = query_all(
+    visitor_rows = query_all(
         """
-        SELECT
-            phone,
-            customer_name,
-            email,
-            reservation_time
+        SELECT phone, first_name, last_name, reservation_count, last_seen_at
+        FROM visitors
+        WHERE restaurant_id = %s
+        ORDER BY last_seen_at DESC
+        """,
+        (get_restaurant_id(),),
+    )
+
+    clients_by_phone = {}
+    for row in visitor_rows:
+        phone = (row.get("phone") or "").strip()
+        if not phone:
+            continue
+        clients_by_phone[phone] = {
+            "first_name": row.get("first_name") or "",
+            "last_name": row.get("last_name") or "",
+            "phone": phone,
+            "reservation_count": int(row.get("reservation_count") or 0),
+        }
+
+    legacy_rows = query_all(
+        """
+        SELECT phone, customer_name, reservation_time
         FROM reservations
         WHERE restaurant_id = %s
           AND COALESCE(TRIM(phone), '') <> ''
@@ -1025,9 +1329,7 @@ def clients_database_to_xlsx():
         """,
         (get_restaurant_id(),),
     )
-
-    clients_by_phone = {}
-    for row in rows:
+    for row in legacy_rows:
         phone = (row.get("phone") or "").strip()
         if not phone or phone in clients_by_phone:
             continue
@@ -1036,13 +1338,13 @@ def clients_database_to_xlsx():
             "first_name": first_name,
             "last_name": last_name,
             "phone": phone,
-            "email": (row.get("email") or "").strip(),
+            "reservation_count": 0,
         }
 
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = "Clients"
-    sheet.append(["First name", "Last name", "Phone", "Email"])
+    sheet.title = "Visitors"
+    sheet.append(["First name", "Last name", "Phone", "Reservations"])
 
     for phone in sorted(clients_by_phone):
         client = clients_by_phone[phone]
@@ -1051,7 +1353,7 @@ def clients_database_to_xlsx():
                 client["first_name"],
                 client["last_name"],
                 client["phone"],
-                client["email"],
+                client["reservation_count"],
             ]
         )
 

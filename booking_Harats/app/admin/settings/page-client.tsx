@@ -7,7 +7,8 @@ import { ru } from "date-fns/locale"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Armchair, CalendarRange, Clock3, FileText, Send, UtensilsCrossed } from "lucide-react"
 import { AdminLogoutButton } from "@/components/admin/admin-logout-button"
-import type { ScheduleDay, Table } from "@/app/admin/page"
+import { FloorPlanEditor } from "@/components/admin/floor-plan-editor"
+import type { FloorPlanAnnotations, ScheduleDay, Table, TableLayout, TableShape } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -63,6 +64,12 @@ const dayLabels: Record<string, string> = {
 
 const TIME_24H_PATTERN = "^([01]\\d|2[0-3]):([0-5]\\d)$"
 
+const emptyFloorAnnotations = (): FloorPlanAnnotations => ({
+  rooms: [],
+  exits: [],
+  bar: null,
+})
+
 export function AdminSettingsPageClient({
   initialTab,
 }: {
@@ -112,6 +119,13 @@ export function AdminSettingsPageClient({
   const [newSetsStart, setNewSetsStart] = useState("")
   const [newSetsEnd, setNewSetsEnd] = useState("")
   const [savingSetsInterval, setSavingSetsInterval] = useState(false)
+  const [tablesSubTab, setTablesSubTab] = useState<"list" | "plan">("list")
+  const [floorPlanWidth, setFloorPlanWidth] = useState(1000)
+  const [floorPlanHeight, setFloorPlanHeight] = useState(700)
+  const [layoutDrafts, setLayoutDrafts] = useState<Record<number, TableLayout>>({})
+  const [shapeDrafts, setShapeDrafts] = useState<Record<number, TableShape>>({})
+  const [planAnnotations, setPlanAnnotations] = useState<FloorPlanAnnotations>(emptyFloorAnnotations)
+  const [isSavingFloorPlan, setIsSavingFloorPlan] = useState(false)
 
   useEffect(() => {
     setActiveTab(initialTab)
@@ -131,6 +145,16 @@ export function AdminSettingsPageClient({
           adminApi.getPublicGuestContact(),
           adminApi.getSetsChoiceIntervals(),
         ])
+      let floorPlanData: {
+        floorPlanWidth: number
+        floorPlanHeight: number
+        annotations?: FloorPlanAnnotations
+      } = { floorPlanWidth: 1000, floorPlanHeight: 700, annotations: emptyFloorAnnotations() }
+      try {
+        floorPlanData = await adminApi.getFloorPlan()
+      } catch {
+        /* older backend without floor-plan endpoint */
+      }
       const nextTables = tablesData as Table[]
       const nextSchedule = scheduleData as ScheduleDay[]
       setTables(nextTables)
@@ -144,6 +168,10 @@ export function AdminSettingsPageClient({
       setScheduleOverrides(overridesData as ScheduleOverrideRow[])
       setSetsChoiceIntervals(setsData as SetsChoiceIntervalRow[])
 
+      setFloorPlanWidth(floorPlanData.floorPlanWidth)
+      setFloorPlanHeight(floorPlanData.floorPlanHeight)
+      setPlanAnnotations(floorPlanData.annotations ? { ...emptyFloorAnnotations(), ...floorPlanData.annotations } : emptyFloorAnnotations())
+
       const nextTableDrafts: Record<number, TableDraft> = {}
       nextTables.forEach((table) => {
         nextTableDrafts[table.id] = {
@@ -155,6 +183,25 @@ export function AdminSettingsPageClient({
         }
       })
       setTableDrafts(nextTableDrafts)
+
+      const nextLayouts: Record<number, TableLayout> = {}
+      const nextShapes: Record<number, TableShape> = {}
+      nextTables.forEach((table) => {
+        const sh = table.layoutShape ?? table.layout?.shape ?? "rectangle"
+        nextShapes[table.id] = sh
+        if (table.layout) {
+          nextLayouts[table.id] = {
+            x: table.layout.x,
+            y: table.layout.y,
+            w: table.layout.w,
+            h: table.layout.h,
+            rotation: table.layout.rotation,
+            shape: sh,
+          }
+        }
+      })
+      setLayoutDrafts(nextLayouts)
+      setShapeDrafts(nextShapes)
 
       const nextScheduleDrafts: Record<number, ScheduleDraft> = {}
       nextSchedule.forEach((day) => {
@@ -406,6 +453,49 @@ export function AdminSettingsPageClient({
     }
   }
 
+  const handleSaveFloorPlan = async () => {
+    setTablesError("")
+    setIsSavingFloorPlan(true)
+    try {
+      await adminApi.patchFloorPlan({
+        floorPlanWidth,
+        floorPlanHeight,
+        annotations: planAnnotations,
+      })
+      await Promise.all(
+        tables.map((table) => {
+          const draft = tableDrafts[table.id]
+          if (!draft) return Promise.resolve()
+          const layout = layoutDrafts[table.id]
+          const shape = shapeDrafts[table.id] ?? "rectangle"
+          return adminApi.updateTable(table.id, {
+            name: draft.name,
+            capacity: parseInt(draft.maxCapacity, 10),
+            is_active: draft.isActive,
+            can_unite: draft.canUnite,
+            unite_with_table_id: draft.canUnite && draft.uniteWithTableId ? parseInt(draft.uniteWithTableId, 10) : null,
+            layoutShape: shape,
+            layout: layout
+              ? {
+                  x: layout.x,
+                  y: layout.y,
+                  w: layout.w,
+                  h: layout.h,
+                  rotation: layout.rotation,
+                  shape,
+                }
+              : null,
+          })
+        })
+      )
+      await loadData()
+    } catch (err) {
+      setTablesError(err instanceof Error ? err.message : "Не удалось сохранить план зала")
+    } finally {
+      setIsSavingFloorPlan(false)
+    }
+  }
+
   const handleDeleteTable = async (tableId: number) => {
     setTablesError("")
     try {
@@ -468,13 +558,19 @@ export function AdminSettingsPageClient({
   }
 
   const saveButtonConfig =
-    activeTab === "tables"
+    activeTab === "tables" && tablesSubTab === "list"
       ? {
           label: "Сохранить столы",
           onClick: () => void handleSaveTables(),
           disabled: isSavingTables,
         }
-      : activeTab === "schedule"
+      : activeTab === "tables" && tablesSubTab === "plan"
+        ? {
+            label: "Сохранить план зала",
+            onClick: () => void handleSaveFloorPlan(),
+            disabled: isSavingFloorPlan,
+          }
+        : activeTab === "schedule"
         ? {
             label: "Сохранить график",
             onClick: () => void handleSaveSchedule(),
@@ -484,171 +580,228 @@ export function AdminSettingsPageClient({
 
   const guestMenuHref =
     menuHas && menuPublicPath ? `${userPublicBase}${menuPublicPath}` : null
+  const isFloorPlanFocused = activeTab === "tables" && tablesSubTab === "plan"
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className={isFloorPlanFocused ? "h-screen overflow-hidden bg-muted/30" : "min-h-screen bg-muted/30"}>
       <div className="sticky top-0 z-20 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 lg:px-6">
-          <div className="flex items-center gap-3">
-            <Button asChild variant="outline" size="icon">
-              <Link href="/admin">
-                <ArrowLeft className="h-4 w-4" />
+        {isFloorPlanFocused ? (
+          <div className="flex items-center px-3 py-2 lg:px-4">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/settings?tab=tables">
+                <ArrowLeft className="mr-1.5 h-4 w-4" />
+                Назад к настройкам
               </Link>
             </Button>
-            <div>
-              <h1 className="text-2xl font-semibold">Настройки</h1>
-              <p className="text-sm text-muted-foreground">
-                Столы, график, даты, сеты, меню PDF и Telegram
-              </p>
+          </div>
+        ) : (
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 lg:px-6">
+            <div className="flex items-center gap-3">
+              <Button asChild variant="outline" size="icon">
+                <Link href="/admin">
+                  <ArrowLeft className="h-4 w-4" />
+                </Link>
+              </Button>
+              <div>
+                <h1 className="text-2xl font-semibold">Настройки</h1>
+                <p className="text-sm text-muted-foreground">
+                  Столы, график, даты, сеты, меню PDF и Telegram
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <AdminLogoutButton />
+              {saveButtonConfig ? (
+                <Button onClick={saveButtonConfig.onClick} disabled={saveButtonConfig.disabled}>
+                  {saveButtonConfig.label}
+                </Button>
+              ) : null}
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <AdminLogoutButton />
-            {saveButtonConfig ? (
-              <Button onClick={saveButtonConfig.onClick} disabled={saveButtonConfig.disabled}>
-                {saveButtonConfig.label}
-              </Button>
-            ) : null}
-          </div>
-        </div>
+        )}
       </div>
 
-      <main className="mx-auto max-w-7xl p-4 lg:p-6">
+      <main
+        className={
+          isFloorPlanFocused
+            ? "h-[calc(100vh-53px)] overflow-hidden p-2 lg:p-3"
+            : "mx-auto max-w-7xl p-4 lg:p-6"
+        }
+      >
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
         {isLoading ? (
           <div className="text-sm text-muted-foreground">Загрузка настроек...</div>
         ) : (
-          <Tabs value={activeTab} onValueChange={setTab} className="gap-6">
-            <TabsList>
-              <TabsTrigger value="tables">
-                <Armchair className="h-4 w-4" />
-                Столы
-              </TabsTrigger>
-              <TabsTrigger value="schedule">
-                <Clock3 className="h-4 w-4" />
-                График
-              </TabsTrigger>
-              <TabsTrigger value="dates">
-                <CalendarRange className="h-4 w-4" />
-                Даты
-              </TabsTrigger>
-              <TabsTrigger value="sets">
-                <UtensilsCrossed className="h-4 w-4" />
-                Сеты
-              </TabsTrigger>
-              <TabsTrigger value="telegram">
-                <Send className="h-4 w-4" />
-                Telegram
-              </TabsTrigger>
-              <TabsTrigger value="menu">
-                <FileText className="h-4 w-4" />
-                Меню PDF
-              </TabsTrigger>
-            </TabsList>
+          <Tabs
+            value={activeTab}
+            onValueChange={setTab}
+            className={isFloorPlanFocused ? "flex h-full min-h-0 flex-col gap-4" : "gap-6"}
+          >
+            {!isFloorPlanFocused && (
+              <TabsList>
+                <TabsTrigger value="tables">
+                  <Armchair className="h-4 w-4" />
+                  Столы
+                </TabsTrigger>
+                <TabsTrigger value="schedule">
+                  <Clock3 className="h-4 w-4" />
+                  График
+                </TabsTrigger>
+                <TabsTrigger value="dates">
+                  <CalendarRange className="h-4 w-4" />
+                  Даты
+                </TabsTrigger>
+                <TabsTrigger value="sets">
+                  <UtensilsCrossed className="h-4 w-4" />
+                  Сеты
+                </TabsTrigger>
+                <TabsTrigger value="telegram">
+                  <Send className="h-4 w-4" />
+                  Telegram
+                </TabsTrigger>
+                <TabsTrigger value="menu">
+                  <FileText className="h-4 w-4" />
+                  Меню PDF
+                </TabsTrigger>
+              </TabsList>
+            )}
 
-            <TabsContent value="tables" className="space-y-6">
-              <div className="rounded-xl border border-border bg-card p-4">
-                <div className="mb-4 text-sm font-medium">Добавить стол</div>
-                <div className="grid gap-3 md:grid-cols-[minmax(200px,1fr)_140px_140px_minmax(180px,1fr)_140px]">
-                  <div className="space-y-2">
-                    <Label>Название</Label>
-                    <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Стол 9" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Вместимость</Label>
-                    <Input type="number" min="1" value={newCapacity} onChange={(e) => setNewCapacity(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Объединяемый</Label>
-                    <div className="flex h-9 items-center">
-                      <Switch
-                        checked={newCanUnite}
-                        onCheckedChange={(checked) => {
-                          setNewCanUnite(checked)
-                          if (!checked) setNewUniteWithTableId("")
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>С каким столом</Label>
-                    <Select value={newUniteWithTableId || "none"} onValueChange={(value) => setNewUniteWithTableId(value === "none" ? "" : value)} disabled={!newCanUnite}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Выберите стол" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Не задано</SelectItem>
-                        {tables.map((table) => (
-                          <SelectItem key={table.id} value={String(table.id)}>
-                            {table.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-end">
-                    <Button
-                      className="w-full"
-                      onClick={() => void handleAddTable()}
-                      disabled={isAddingTable || !newName.trim() || !newCapacity.trim()}
-                    >
-                      Добавить
-                    </Button>
-                  </div>
-                </div>
-              </div>
+            <TabsContent value="tables" className={isFloorPlanFocused ? "min-h-0 flex-1 space-y-4 overflow-hidden" : "space-y-6"}>
+              <Tabs
+                value={tablesSubTab}
+                onValueChange={(v) => setTablesSubTab(v as "list" | "plan")}
+                className={isFloorPlanFocused ? "flex h-full min-h-0 flex-col gap-4" : "gap-6"}
+              >
+                {!isFloorPlanFocused && (
+                  <TabsList>
+                    <TabsTrigger value="list">Список и параметры</TabsTrigger>
+                    <TabsTrigger value="plan">Конструктор плана зала</TabsTrigger>
+                  </TabsList>
+                )}
 
-              <div className="space-y-3">
-                {tables.map((table) => {
-                  const draft = tableDrafts[table.id]
-                  if (!draft) return null
-                  return (
-                    <div key={table.id} className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[minmax(160px,1fr)_140px_140px_minmax(180px,1fr)_120px]">
+                <TabsContent value="list" className="space-y-6">
+                  <div className="rounded-xl border border-border bg-card p-4">
+                    <div className="mb-4 text-sm font-medium">Добавить стол</div>
+                    <div className="grid gap-3 md:grid-cols-[minmax(200px,1fr)_140px_140px_minmax(180px,1fr)_140px]">
                       <div className="space-y-2">
                         <Label>Название</Label>
-                        <Input value={draft.name} onChange={(e) => updateTableDraft(table.id, { name: e.target.value })} />
+                        <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Стол 9" />
                       </div>
                       <div className="space-y-2">
                         <Label>Вместимость</Label>
-                        <Input type="number" min="1" value={draft.maxCapacity} onChange={(e) => updateTableDraft(table.id, { maxCapacity: e.target.value })} />
+                        <Input type="number" min="1" value={newCapacity} onChange={(e) => setNewCapacity(e.target.value)} />
                       </div>
                       <div className="space-y-2">
-                        <Label>Активен</Label>
+                        <Label>Объединяемый</Label>
                         <div className="flex h-9 items-center">
-                          <Switch checked={draft.isActive} onCheckedChange={(checked) => updateTableDraft(table.id, { isActive: checked })} />
+                          <Switch
+                            checked={newCanUnite}
+                            onCheckedChange={(checked) => {
+                              setNewCanUnite(checked)
+                              if (!checked) setNewUniteWithTableId("")
+                            }}
+                          />
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <Label>Объединить с</Label>
-                        <div className="space-y-2">
-                          <div className="flex h-9 items-center">
-                            <Switch checked={draft.canUnite} onCheckedChange={(checked) => updateTableDraft(table.id, { canUnite: checked, uniteWithTableId: checked ? draft.uniteWithTableId : "" })} />
-                          </div>
-                          <Select value={draft.uniteWithTableId || "none"} onValueChange={(value) => updateTableDraft(table.id, { uniteWithTableId: value === "none" ? "" : value })} disabled={!draft.canUnite}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Выберите стол" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">Не задано</SelectItem>
-                              {tables.filter((candidate) => candidate.id !== table.id).map((candidate) => (
-                                <SelectItem key={candidate.id} value={String(candidate.id)}>
-                                  {candidate.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        <Label>С каким столом</Label>
+                        <Select value={newUniteWithTableId || "none"} onValueChange={(value) => setNewUniteWithTableId(value === "none" ? "" : value)} disabled={!newCanUnite}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Выберите стол" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Не задано</SelectItem>
+                            {tables.map((table) => (
+                              <SelectItem key={table.id} value={String(table.id)}>
+                                {table.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="flex items-end">
-                        <Button variant="destructive" className="w-full" onClick={() => void handleDeleteTable(table.id)}>
-                          Удалить
+                        <Button
+                          className="w-full"
+                          onClick={() => void handleAddTable()}
+                          disabled={isAddingTable || !newName.trim() || !newCapacity.trim()}
+                        >
+                          Добавить
                         </Button>
                       </div>
                     </div>
-                  )
-                })}
-              </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {tables.map((table) => {
+                      const draft = tableDrafts[table.id]
+                      if (!draft) return null
+                      return (
+                        <div key={table.id} className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[minmax(160px,1fr)_140px_140px_minmax(180px,1fr)_120px]">
+                          <div className="space-y-2">
+                            <Label>Название</Label>
+                            <Input value={draft.name} onChange={(e) => updateTableDraft(table.id, { name: e.target.value })} />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Вместимость</Label>
+                            <Input type="number" min="1" value={draft.maxCapacity} onChange={(e) => updateTableDraft(table.id, { maxCapacity: e.target.value })} />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Активен</Label>
+                            <div className="flex h-9 items-center">
+                              <Switch checked={draft.isActive} onCheckedChange={(checked) => updateTableDraft(table.id, { isActive: checked })} />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Объединить с</Label>
+                            <div className="space-y-2">
+                              <div className="flex h-9 items-center">
+                                <Switch checked={draft.canUnite} onCheckedChange={(checked) => updateTableDraft(table.id, { canUnite: checked, uniteWithTableId: checked ? draft.uniteWithTableId : "" })} />
+                              </div>
+                              <Select value={draft.uniteWithTableId || "none"} onValueChange={(value) => updateTableDraft(table.id, { uniteWithTableId: value === "none" ? "" : value })} disabled={!draft.canUnite}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Выберите стол" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">Не задано</SelectItem>
+                                  {tables.filter((candidate) => candidate.id !== table.id).map((candidate) => (
+                                    <SelectItem key={candidate.id} value={String(candidate.id)}>
+                                      {candidate.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <div className="flex items-end">
+                            <Button variant="destructive" className="w-full" onClick={() => void handleDeleteTable(table.id)}>
+                              Удалить
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="plan" className="min-h-0 flex-1 space-y-3 overflow-hidden">
+                  <FloorPlanEditor
+                    tables={tables}
+                    tableDrafts={tableDrafts}
+                    updateTableDraft={updateTableDraft}
+                    layoutDrafts={layoutDrafts}
+                    setLayoutDrafts={setLayoutDrafts}
+                    shapeDrafts={shapeDrafts}
+                    setShapeDrafts={setShapeDrafts}
+                    planAnnotations={planAnnotations}
+                    setPlanAnnotations={setPlanAnnotations}
+                    floorPlanWidth={floorPlanWidth}
+                    floorPlanHeight={floorPlanHeight}
+                    onFloorPlanWidthChange={setFloorPlanWidth}
+                    onFloorPlanHeightChange={setFloorPlanHeight}
+                  />
+                </TabsContent>
+              </Tabs>
 
               {tablesError && <div className="text-sm text-destructive">{tablesError}</div>}
             </TabsContent>

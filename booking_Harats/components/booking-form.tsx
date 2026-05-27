@@ -39,7 +39,8 @@ import {
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
-import { CalendarIcon, Check, Users, User, Phone, UtensilsCrossed, Timer, Mail, AlertTriangle, History } from "lucide-react"
+import { CalendarIcon, Check, Users, User, Phone, UtensilsCrossed, Timer, AlertTriangle, History, ShieldCheck } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
 import { userApi } from "@/lib/api"
 import {
   MAX_PARTY_SIZE,
@@ -53,6 +54,8 @@ import {
   type SetsChoiceInterval,
 } from "@/lib/booking-limits"
 const USER_BOOKING_DRAFT_KEY = "qrs-user-booking-draft"
+const OFFER_PDF_URL = "/oferta_mise_v3.pdf"
+const OFFER_DOCUMENT_ID = "oferta_mise_v3.pdf"
 const USER_BOOKING_HISTORY_COOKIE = "qrs-user-booking-history"
 const USER_BOOKING_HISTORY_LIMIT = 10
 
@@ -87,7 +90,6 @@ type UserBookingDraft = {
     firstName: string
     lastName: string
     phone: string
-    email: string
     guests: string
     set: string
     time: string
@@ -99,7 +101,6 @@ type UserBookingHistoryItem = {
   firstName: string
   lastName: string
   phone: string
-  email: string
   date: string
   time: string
   /** Present for entries saved after this update */
@@ -143,7 +144,16 @@ function saveReservationHistory(items: UserBookingHistoryItem[]) {
   )
 }
 
-type FieldKey = "firstName" | "lastName" | "phone" | "email" | "guests" | "set" | "date" | "time"
+type FieldKey =
+  | "firstName"
+  | "lastName"
+  | "phone"
+  | "smsCode"
+  | "guests"
+  | "set"
+  | "date"
+  | "time"
+  | "offerAccepted"
 
 type SlugStatus = "loading" | "ok" | "invalid" | "error"
 
@@ -151,8 +161,6 @@ export type BookingFormProps = {
   restaurantSlug: string
   setsChoiceIntervals: SetsChoiceInterval[]
 }
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
 function getPhoneError(phone: string): string | null {
   const trimmed = phone.trim()
@@ -163,11 +171,17 @@ function getPhoneError(phone: string): string | null {
   return null
 }
 
-function getEmailError(email: string): string | null {
-  const trimmed = email.trim()
-  if (!trimmed) return "Укажите email."
-  if (!EMAIL_RE.test(trimmed)) return "Введите корректный email (например, name@mail.ru)."
-  return null
+function phoneDigitsKey(phone: string) {
+  return phone.replace(/\D/g, "")
+}
+
+type PhoneConfirmedStatus = {
+  alreadyConfirmed?: boolean
+  verificationToken?: string
+  reason?: "visitor" | "session"
+  firstName?: string
+  lastName?: string
+  namesLocked?: boolean
 }
 
 export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingFormProps) {
@@ -175,6 +189,7 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
   const [restaurantDisplayName, setRestaurantDisplayName] = useState("")
   const [slugCheckRetryKey, setSlugCheckRetryKey] = useState(0)
   const draftAppliedForSlug = useRef<string | null>(null)
+  const confirmedPhoneKeyRef = useRef<string | null>(null)
   const [date, setDate] = useState<Date>()
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -192,11 +207,23 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
     firstName: "",
     lastName: "",
     phone: "",
-    email: "",
     guests: "",
     set: "",
     time: "",
   })
+  const [smsCode, setSmsCode] = useState("")
+  const [phoneVerified, setPhoneVerified] = useState(false)
+  const [phoneVerificationToken, setPhoneVerificationToken] = useState<string | null>(null)
+  const [isSendingSms, setIsSendingSms] = useState(false)
+  const [isVerifyingSms, setIsVerifyingSms] = useState(false)
+  const [phoneVerifyMessage, setPhoneVerifyMessage] = useState("")
+  const [phoneVerifyError, setPhoneVerifyError] = useState("")
+  const [smsCodeSent, setSmsCodeSent] = useState(false)
+  const [phoneConfirmReason, setPhoneConfirmReason] = useState<"visitor" | "session" | "code" | null>(null)
+  const [isCheckingPhone, setIsCheckingPhone] = useState(false)
+  const [nameInputsLocked, setNameInputsLocked] = useState(false)
+  const [acceptedOffer, setAcceptedOffer] = useState(false)
+  const [marketingConsent, setMarketingConsent] = useState(false)
 
   const dateValue = useMemo(() => (date ? format(date, "yyyy-MM-dd") : ""), [date])
   const isSetsChoiceAllowed = useMemo(
@@ -220,7 +247,7 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
           formData.firstName.trim() &&
           formData.lastName.trim() &&
           !getPhoneError(formData.phone) &&
-          !getEmailError(formData.email) &&
+          phoneVerified &&
           formData.guests &&
           setsSelectionOk &&
           date
@@ -230,7 +257,7 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
       formData.firstName,
       formData.lastName,
       formData.phone,
-      formData.email,
+      phoneVerified,
       formData.guests,
       setsSelectionOk,
       date,
@@ -356,6 +383,68 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
     }
   }, [restaurantSlug])
 
+  const resetPhoneVerification = () => {
+    setPhoneVerified(false)
+    setPhoneVerificationToken(null)
+    setSmsCode("")
+    setSmsCodeSent(false)
+    setPhoneVerifyMessage("")
+    setPhoneVerifyError("")
+    setPhoneConfirmReason(null)
+    setNameInputsLocked(false)
+    confirmedPhoneKeyRef.current = null
+  }
+
+  const applyPhoneConfirmed = (status: PhoneConfirmedStatus, phoneValue: string) => {
+    if (!status.alreadyConfirmed) return false
+    setPhoneVerified(true)
+    setPhoneVerificationToken(status.verificationToken ?? null)
+    confirmedPhoneKeyRef.current = phoneDigitsKey(phoneValue)
+    setPhoneConfirmReason(
+      status.reason === "visitor" ? "visitor" : status.reason === "session" ? "session" : "code"
+    )
+    const lockNames = Boolean(status.namesLocked)
+    setNameInputsLocked(lockNames)
+    if (status.firstName || status.lastName || lockNames) {
+      setFormData((prev) => ({
+        ...prev,
+        firstName: status.firstName ?? prev.firstName,
+        lastName: status.lastName ?? prev.lastName,
+      }))
+    }
+    setSmsCodeSent(false)
+    setPhoneVerifyError("")
+    setPhoneVerifyMessage(
+      status.reason === "visitor"
+        ? "Номер уже подтверждён — код не нужен"
+        : "Телефон подтверждён"
+    )
+    setFieldErrors((prev) => {
+      const next = { ...prev }
+      delete next.phone
+      delete next.smsCode
+      return next
+    })
+    return true
+  }
+
+  const checkPhoneStatus = async (phone: string) => {
+    const pe = getPhoneError(phone)
+    if (pe) return
+    setIsCheckingPhone(true)
+    try {
+      const status = await userApi.getPhoneStatus({
+        restaurant: restaurantSlug,
+        phone: phone.trim(),
+      })
+      applyPhoneConfirmed(status, phone)
+    } catch {
+      /* ignore — user can still request SMS manually */
+    } finally {
+      setIsCheckingPhone(false)
+    }
+  }
+
   const clearFieldError = (field: FieldKey) => {
     setFieldErrors((prev) => {
       if (!prev[field]) return prev
@@ -366,8 +455,16 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
   }
 
   const handleInputChange = (field: keyof typeof formData, value: string) => {
-    if (field === "firstName" || field === "lastName" || field === "phone" || field === "email") {
+    if (field === "firstName" || field === "lastName" || field === "phone") {
       clearFieldError(field)
+    }
+    if (field === "phone") {
+      const prevKey = phoneDigitsKey(formData.phone)
+      const nextKey = phoneDigitsKey(value)
+      if (nextKey !== prevKey && confirmedPhoneKeyRef.current !== nextKey) {
+        resetPhoneVerification()
+        setFormData((prev) => ({ ...prev, firstName: "", lastName: "" }))
+      }
     }
     if (field === "set") clearFieldError("set")
     if (field === "time") clearFieldError("time")
@@ -376,12 +473,16 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
 
   const validateBookingForm = (): Partial<Record<FieldKey, string>> => {
     const e: Partial<Record<FieldKey, string>> = {}
-    if (!formData.firstName.trim()) e.firstName = "Введите имя."
-    if (!formData.lastName.trim()) e.lastName = "Введите фамилию."
     const pe = getPhoneError(formData.phone)
     if (pe) e.phone = pe
-    const ee = getEmailError(formData.email)
-    if (ee) e.email = ee
+    else if (!phoneVerified) e.phone = "Подтвердите телефон кодом из SMS."
+    if (phoneVerified && !nameInputsLocked) {
+      if (!formData.firstName.trim()) e.firstName = "Введите имя."
+      if (!formData.lastName.trim()) e.lastName = "Введите фамилию."
+    }
+    if (smsCodeSent && !phoneVerified && phoneConfirmReason !== "visitor" && smsCode.trim().length !== 6) {
+      e.smsCode = "Введите 6-значный код."
+    }
     if (!formData.guests) {
       e.guests = "Выберите количество гостей."
     } else {
@@ -408,30 +509,103 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
     }
     if (!date) e.date = "Выберите дату."
     if (!formData.time) e.time = "Выберите время бронирования."
+    if (!acceptedOffer) {
+      e.offerAccepted =
+        "Примите условия публичной оферты и дайте согласие на обработку персональных данных."
+    }
     return e
   }
 
   /** Show red border + message under field on blur when value is invalid. */
-  const handleFieldBlur = (field: "firstName" | "lastName" | "phone" | "email") => {
+  const handleFieldBlur = (field: "firstName" | "lastName" | "phone") => {
     setFieldErrors((prev) => {
       const next = { ...prev }
       if (field === "firstName") {
-        if (!formData.firstName.trim()) next.firstName = "Введите имя."
+        if (!phoneVerified || nameInputsLocked) delete next.firstName
+        else if (!formData.firstName.trim()) next.firstName = "Введите имя."
         else delete next.firstName
       } else if (field === "lastName") {
-        if (!formData.lastName.trim()) next.lastName = "Введите фамилию."
+        if (!phoneVerified || nameInputsLocked) delete next.lastName
+        else if (!formData.lastName.trim()) next.lastName = "Введите фамилию."
         else delete next.lastName
       } else if (field === "phone") {
         const err = getPhoneError(formData.phone)
         if (err) next.phone = err
+        else if (!phoneVerified) next.phone = "Подтвердите телефон кодом из SMS."
         else delete next.phone
-      } else {
-        const err = getEmailError(formData.email)
-        if (err) next.email = err
-        else delete next.email
       }
       return next
     })
+    if (field === "phone" && !getPhoneError(formData.phone)) {
+      void checkPhoneStatus(formData.phone)
+    }
+  }
+
+  const sendSmsCode = async () => {
+    setPhoneVerifyError("")
+    setPhoneVerifyMessage("")
+    const pe = getPhoneError(formData.phone)
+    if (pe) {
+      setFieldErrors((prev) => ({ ...prev, phone: pe }))
+      return
+    }
+    setIsSendingSms(true)
+    try {
+      const result = await userApi.sendPhoneVerificationCode({
+        restaurant: restaurantSlug,
+        phone: formData.phone.trim(),
+      })
+      if (result.alreadyConfirmed) {
+        applyPhoneConfirmed(result, formData.phone.trim())
+        return
+      }
+      setSmsCodeSent(true)
+      setPhoneVerified(false)
+      setPhoneVerificationToken(null)
+      setPhoneConfirmReason(null)
+      setPhoneVerifyMessage(
+        result.devCode
+          ? `Код для разработки: ${result.devCode}`
+          : "Код отправлен по SMS. Введите его ниже."
+      )
+    } catch (error) {
+      setPhoneVerifyError(error instanceof Error ? error.message : "Не удалось отправить код")
+    } finally {
+      setIsSendingSms(false)
+    }
+  }
+
+  const verifySmsCode = async () => {
+    setPhoneVerifyError("")
+    const code = smsCode.trim()
+    if (code.length !== 6) {
+      setFieldErrors((prev) => ({ ...prev, smsCode: "Введите 6-значный код." }))
+      return
+    }
+    setIsVerifyingSms(true)
+    try {
+      const result = await userApi.verifyPhoneCode({
+        restaurant: restaurantSlug,
+        phone: formData.phone.trim(),
+        code,
+      })
+      setPhoneVerified(true)
+      setPhoneVerificationToken(result.verificationToken)
+      setNameInputsLocked(false)
+      confirmedPhoneKeyRef.current = phoneDigitsKey(formData.phone)
+      setPhoneConfirmReason("code")
+      setPhoneVerifyMessage("Телефон подтверждён")
+      setFieldErrors((prev) => {
+        const next = { ...prev }
+        delete next.phone
+        delete next.smsCode
+        return next
+      })
+    } catch (error) {
+      setPhoneVerifyError(error instanceof Error ? error.message : "Неверный код")
+    } finally {
+      setIsVerifyingSms(false)
+    }
   }
 
   const loadAvailability = async (nextDate: Date | undefined, guests: string, slug: string) => {
@@ -463,20 +637,31 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
       return
     }
 
+    if (!phoneVerified) {
+      setSubmitError("Подтвердите телефон кодом из SMS.")
+      return
+    }
+
     setIsLoading(true)
     try {
       const setsPayload = setsFormValueToApi(formData.set, date, setsChoiceIntervals)
-      const result = await userApi.createReservation({
+      const reservationBody: Record<string, unknown> = {
         restaurant: restaurantSlug,
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         phone: formData.phone.trim(),
-        email: formData.email.trim(),
         guests: parseInt(formData.guests, 10),
         sets: setsPayload,
         date: dateValue,
         time: formData.time,
-      })
+      }
+      if (phoneVerificationToken) {
+        reservationBody.phoneVerificationToken = phoneVerificationToken
+      }
+      reservationBody.offerAccepted = true
+      reservationBody.marketingConsent = marketingConsent
+      reservationBody.offerDocument = OFFER_DOCUMENT_ID
+      const result = await userApi.createReservation(reservationBody)
 
       const reservation = result.reservation as ReservationDetails & {
         guests?: number
@@ -494,7 +679,6 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         phone: formData.phone.trim(),
-        email: formData.email.trim(),
         date: reservation.date,
         time: reservation.time,
         guests: parseInt(formData.guests, 10),
@@ -515,7 +699,6 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
         firstName: "",
         lastName: "",
         phone: "",
-        email: "",
         guests: "",
         set: "",
         time: "",
@@ -523,6 +706,9 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
       setDate(undefined)
       setAvailableSlots([])
       setAvailabilitySchedule(null)
+      resetPhoneVerification()
+      setAcceptedOffer(false)
+      setMarketingConsent(false)
     } catch (error) {
       if (error instanceof TypeError) {
         setSubmitError("Нет соединения с сервером. Проверьте интернет и попробуйте снова.")
@@ -673,7 +859,6 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
                           {item.date} • {item.time}
                         </div>
                         <div className="text-muted-foreground">{item.phone}</div>
-                        {item.email && <div className="text-muted-foreground">{item.email}</div>}
                         {(item.guests != null || item.sets != null) && (
                           <div className="text-muted-foreground">
                             {item.guests != null && <span>Гостей: {item.guests}</span>}
@@ -709,47 +894,6 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
             <span>Личные данные</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="firstName" className="text-xs text-muted-foreground">
-                Имя <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="firstName"
-                placeholder="Иван"
-                value={formData.firstName}
-                onChange={(e) => handleInputChange("firstName", e.target.value)}
-                onBlur={() => handleFieldBlur("firstName")}
-                autoComplete="given-name"
-                aria-invalid={Boolean(fieldErrors.firstName)}
-                className={cn(
-                  "h-12 rounded-xl border bg-background text-base placeholder:text-muted-foreground/50",
-                  fieldErrors.firstName ? "border-destructive ring-1 ring-destructive/40" : "border-border"
-                )}
-              />
-              {fieldErrors.firstName && <p className="text-xs text-destructive">{fieldErrors.firstName}</p>}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lastName" className="text-xs text-muted-foreground">
-                Фамилия <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="lastName"
-                placeholder="Иванов"
-                value={formData.lastName}
-                onChange={(e) => handleInputChange("lastName", e.target.value)}
-                onBlur={() => handleFieldBlur("lastName")}
-                autoComplete="family-name"
-                aria-invalid={Boolean(fieldErrors.lastName)}
-                className={cn(
-                  "h-12 rounded-xl border bg-background text-base placeholder:text-muted-foreground/50",
-                  fieldErrors.lastName ? "border-destructive ring-1 ring-destructive/40" : "border-border"
-                )}
-              />
-              {fieldErrors.lastName && <p className="text-xs text-destructive">{fieldErrors.lastName}</p>}
-            </div>
-          </div>
-
           <div className="space-y-1.5">
             <Label htmlFor="phone" className="text-xs text-muted-foreground">
               Телефон <span className="text-destructive">*</span>
@@ -775,30 +919,125 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
             {fieldErrors.phone && <p className="text-xs text-destructive">{fieldErrors.phone}</p>}
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="email" className="text-xs text-muted-foreground">
-              Email <span className="text-destructive">*</span>
-            </Label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
+          <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-4">
+            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              <span>Подтверждение телефона</span>
+            </div>
+            {isCheckingPhone && (
+              <p className="text-xs text-muted-foreground">Проверяем номер…</p>
+            )}
+            {phoneVerified ? (
+              <p className="flex items-center gap-2 text-sm text-primary">
+                <Check className="h-4 w-4" />
+                {phoneConfirmReason === "visitor"
+                  ? "Номер уже подтверждён — SMS не требуется"
+                  : "Телефон подтверждён"}
+              </p>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 w-full rounded-xl"
+                  disabled={
+                    isSendingSms || isCheckingPhone || Boolean(getPhoneError(formData.phone))
+                  }
+                  onClick={() => void sendSmsCode()}
+                >
+                  {isSendingSms ? "Отправляем код…" : smsCodeSent ? "Отправить код снова" : "Отправить код по SMS"}
+                </Button>
+                {smsCodeSent && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="smsCode" className="text-xs text-muted-foreground">
+                      Код из SMS <span className="text-destructive">*</span>
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="smsCode"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        placeholder="000000"
+                        maxLength={6}
+                        value={smsCode}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/\D/g, "").slice(0, 6)
+                          setSmsCode(v)
+                          clearFieldError("smsCode")
+                        }}
+                        aria-invalid={Boolean(fieldErrors.smsCode)}
+                        className={cn(
+                          "h-12 flex-1 rounded-xl border bg-background text-base tracking-widest",
+                          fieldErrors.smsCode ? "border-destructive ring-1 ring-destructive/40" : "border-border"
+                        )}
+                      />
+                      <Button
+                        type="button"
+                        className="h-12 rounded-xl px-4"
+                        disabled={isVerifyingSms || smsCode.length !== 6}
+                        onClick={() => void verifySmsCode()}
+                      >
+                        {isVerifyingSms ? "…" : "OK"}
+                      </Button>
+                    </div>
+                    {fieldErrors.smsCode && <p className="text-xs text-destructive">{fieldErrors.smsCode}</p>}
+                  </div>
+                )}
+              </>
+            )}
+            {phoneVerifyMessage && !phoneVerifyError && (
+              <p className="text-xs text-muted-foreground">{phoneVerifyMessage}</p>
+            )}
+            {phoneVerifyError && <p className="text-xs text-destructive">{phoneVerifyError}</p>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="firstName" className="text-xs text-muted-foreground">
+                Имя <span className="text-destructive">*</span>
+              </Label>
               <Input
-                id="email"
-                type="email"
-                inputMode="email"
-                placeholder="ivan@example.com"
-                value={formData.email}
-                onChange={(e) => handleInputChange("email", e.target.value)}
-                onBlur={() => handleFieldBlur("email")}
-                autoComplete="email"
-                aria-invalid={Boolean(fieldErrors.email)}
+                id="firstName"
+                placeholder="Иван"
+                value={formData.firstName}
+                onChange={(e) => handleInputChange("firstName", e.target.value)}
+                onBlur={() => handleFieldBlur("firstName")}
+                autoComplete="given-name"
+                disabled={!phoneVerified || nameInputsLocked}
+                aria-invalid={Boolean(fieldErrors.firstName)}
                 className={cn(
-                  "h-12 rounded-xl border bg-background pl-11 text-base placeholder:text-muted-foreground/50",
-                  fieldErrors.email ? "border-destructive ring-1 ring-destructive/40" : "border-border"
+                  "h-12 rounded-xl border bg-background text-base placeholder:text-muted-foreground/50",
+                  fieldErrors.firstName ? "border-destructive ring-1 ring-destructive/40" : "border-border"
                 )}
               />
+              {fieldErrors.firstName && <p className="text-xs text-destructive">{fieldErrors.firstName}</p>}
             </div>
-            {fieldErrors.email && <p className="text-xs text-destructive">{fieldErrors.email}</p>}
+            <div className="space-y-1.5">
+              <Label htmlFor="lastName" className="text-xs text-muted-foreground">
+                Фамилия <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="lastName"
+                placeholder="Иванов"
+                value={formData.lastName}
+                onChange={(e) => handleInputChange("lastName", e.target.value)}
+                onBlur={() => handleFieldBlur("lastName")}
+                autoComplete="family-name"
+                disabled={!phoneVerified || nameInputsLocked}
+                aria-invalid={Boolean(fieldErrors.lastName)}
+                className={cn(
+                  "h-12 rounded-xl border bg-background text-base placeholder:text-muted-foreground/50",
+                  fieldErrors.lastName ? "border-destructive ring-1 ring-destructive/40" : "border-border"
+                )}
+              />
+              {fieldErrors.lastName && <p className="text-xs text-destructive">{fieldErrors.lastName}</p>}
+            </div>
           </div>
+          {!phoneVerified && (
+            <p className="text-xs text-muted-foreground">
+              Сначала подтвердите номер телефона, затем укажите имя и фамилию.
+            </p>
+          )}
         </div>
 
         <div className="h-px bg-border" />
@@ -981,7 +1220,7 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
                   fieldErrors.time ? "border-destructive ring-1 ring-destructive/40" : "border-border"
                 )}
               >
-                Заполните все поля выше (имя, фамилия, телефон, email, ресторан, гости, дату и сеты), чтобы увидеть доступное время.
+                Заполните все поля выше (имя, фамилия, подтверждённый телефон, гости, дату и сеты), чтобы увидеть доступное время.
               </div>
             ) : isAvailabilityLoading ? (
               <div
@@ -1074,6 +1313,57 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
         </div>
         {submitError && <p className="text-sm text-destructive">{submitError}</p>}
 
+          <div className="space-y-4 rounded-2xl border border-border bg-muted/20 p-4">
+            <div className="flex gap-3">
+              <Checkbox
+                id="offer-accepted"
+                checked={acceptedOffer}
+                onCheckedChange={(checked) => {
+                  setAcceptedOffer(checked === true)
+                  if (checked === true) {
+                    setFieldErrors((prev) => {
+                      const next = { ...prev }
+                      delete next.offerAccepted
+                      return next
+                    })
+                  }
+                }}
+                aria-invalid={Boolean(fieldErrors.offerAccepted)}
+                className="mt-0.5"
+              />
+              <Label htmlFor="offer-accepted" className="cursor-pointer text-sm font-normal leading-snug">
+                <span className="text-destructive">*</span>{" "}
+                Я принимаю условия{" "}
+                <a
+                  href={OFFER_PDF_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-primary underline underline-offset-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Публичной оферты
+                </a>{" "}
+                сервиса Mise и даю согласие на обработку моих персональных данных (имени, фамилии и
+                номера телефона) ООО «Найтколл» и ООО «ХАРАТСБЕЛ» в целях бронирования столика.
+              </Label>
+            </div>
+            {fieldErrors.offerAccepted && (
+              <p className="text-xs text-destructive">{fieldErrors.offerAccepted}</p>
+            )}
+            <div className="flex gap-3">
+              <Checkbox
+                id="marketing-consent"
+                checked={marketingConsent}
+                onCheckedChange={(checked) => setMarketingConsent(checked === true)}
+                className="mt-0.5"
+              />
+              <Label htmlFor="marketing-consent" className="cursor-pointer text-sm font-normal leading-snug">
+                Я даю согласие на получение информационных и рекламных сообщений от сервиса Mise и
+                заведения Harats Irish Pub Grodno.
+              </Label>
+            </div>
+          </div>
+
           <Button
             type="submit"
             disabled={isLoading}
@@ -1116,10 +1406,6 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
                   <div className="flex justify-between gap-4">
                     <dt className="text-muted-foreground">Телефон</dt>
                     <dd className="text-right font-medium">{formData.phone.trim()}</dd>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-muted-foreground">Email</dt>
-                    <dd className="break-all text-right font-medium">{formData.email.trim()}</dd>
                   </div>
                   <div className="flex justify-between gap-4">
                     <dt className="text-muted-foreground">Дата</dt>

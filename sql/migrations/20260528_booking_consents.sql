@@ -1,0 +1,7 @@
+ALTER TABLE reservations
+    ADD COLUMN IF NOT EXISTS offer_accepted_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS offer_document TEXT;
+
+ALTER TABLE visitors
+    ADD COLUMN IF NOT EXISTS marketing_consent BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS marketing_consent_at TIMESTAMP;

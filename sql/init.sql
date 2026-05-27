@@ -51,6 +51,28 @@ CREATE TABLE IF NOT EXISTS tables (
 
 CREATE INDEX IF NOT EXISTS idx_tables_restaurant_id ON tables (restaurant_id);
 
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS floor_plan_width INTEGER NOT NULL DEFAULT 1000;
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS floor_plan_height INTEGER NOT NULL DEFAULT 700;
+
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS layout_x DOUBLE PRECISION NULL;
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS layout_y DOUBLE PRECISION NULL;
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS layout_w DOUBLE PRECISION NULL;
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS layout_h DOUBLE PRECISION NULL;
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS layout_rotation DOUBLE PRECISION NULL;
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS layout_shape TEXT NOT NULL DEFAULT 'rectangle';
+
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS floor_plan_annotations JSONB NULL DEFAULT '{}'::jsonb;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'tables_layout_shape_check'
+  ) THEN
+    ALTER TABLE tables ADD CONSTRAINT tables_layout_shape_check
+      CHECK (layout_shape IN ('square', 'rectangle', 'circle', 'corner'));
+  END IF;
+END $$;
+
 -- A booking (no direct table_id — tables are linked via reservation_tables).
 CREATE TABLE IF NOT EXISTS reservations (
     id SERIAL PRIMARY KEY,
@@ -64,10 +86,14 @@ CREATE TABLE IF NOT EXISTS reservations (
     note TEXT,
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'confirmed', 'cancelled', 'completed')),
+    arrival_status TEXT CHECK (arrival_status IS NULL OR arrival_status IN ('arrived', 'no_show')),
+    arrived_at TIMESTAMP,
     confirmation_code TEXT,
     created_by_admin BOOLEAN NOT NULL DEFAULT FALSE,
     admin_note TEXT,
     cancelled_at TIMESTAMP,
+    offer_accepted_at TIMESTAMP,
+    offer_document TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -84,6 +110,7 @@ CREATE TABLE IF NOT EXISTS reservation_tables (
 CREATE INDEX IF NOT EXISTS idx_reservation_tables_table_id ON reservation_tables(table_id);
 CREATE INDEX IF NOT EXISTS idx_reservations_reservation_time ON reservations(reservation_time);
 CREATE INDEX IF NOT EXISTS idx_reservations_status ON reservations(status);
+CREATE INDEX IF NOT EXISTS idx_reservations_arrival_status ON reservations(arrival_status);
 CREATE INDEX IF NOT EXISTS idx_reservations_email ON reservations(email);
 
 -- Table-level maintenance/service block windows.
@@ -172,6 +199,40 @@ CREATE TABLE IF NOT EXISTS telegram_recipients (
 
 CREATE INDEX IF NOT EXISTS idx_telegram_recipients_restaurant_id ON telegram_recipients (restaurant_id);
 
+CREATE TABLE IF NOT EXISTS phone_verification_challenges (
+    id SERIAL PRIMARY KEY,
+    restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    phone_normalized TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    verified_token TEXT UNIQUE,
+    verified_expires_at TIMESTAMP,
+    verified_at TIMESTAMP,
+    consumed_at TIMESTAMP,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_phone_verification_lookup
+    ON phone_verification_challenges (restaurant_id, phone_normalized, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS visitors (
+    id SERIAL PRIMARY KEY,
+    restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    phone TEXT NOT NULL,
+    first_name TEXT NOT NULL DEFAULT '',
+    last_name TEXT NOT NULL DEFAULT '',
+    first_seen_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    reservation_count INTEGER NOT NULL DEFAULT 0,
+    marketing_consent BOOLEAN NOT NULL DEFAULT FALSE,
+    marketing_consent_at TIMESTAMP,
+    UNIQUE (restaurant_id, phone)
+);
+
+CREATE INDEX IF NOT EXISTS idx_visitors_restaurant ON visitors (restaurant_id);
+CREATE INDEX IF NOT EXISTS idx_visitors_phone ON visitors (restaurant_id, phone);
+
 CREATE TABLE IF NOT EXISTS telegram_notifications (
     id SERIAL PRIMARY KEY,
     reservation_id INTEGER NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
@@ -181,6 +242,18 @@ CREATE TABLE IF NOT EXISTS telegram_notifications (
     UNIQUE (reservation_id, chat_id, message_id)
 );
 
+CREATE TABLE IF NOT EXISTS reservation_sms_notifications (
+    id SERIAL PRIMARY KEY,
+    reservation_id INTEGER NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    scheduled_for TIMESTAMP NULL,
+    sent_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE (reservation_id, event_type, scheduled_for)
+);
+CREATE INDEX IF NOT EXISTS idx_reservation_sms_notifications_event
+    ON reservation_sms_notifications (event_type, sent_at);
+
 -- Legacy idempotent column adds (no-op on fresh schema above)
 ALTER TABLE reservations ADD COLUMN IF NOT EXISTS guests INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE reservations ADD COLUMN IF NOT EXISTS sets INTEGER NOT NULL DEFAULT 1;
@@ -188,6 +261,8 @@ ALTER TABLE reservations ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE reservations ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE reservations ADD COLUMN IF NOT EXISTS note TEXT;
 ALTER TABLE reservations ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS arrival_status TEXT;
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS arrived_at TIMESTAMP;
 ALTER TABLE reservations ADD COLUMN IF NOT EXISTS confirmation_code TEXT;
 ALTER TABLE reservations ADD COLUMN IF NOT EXISTS created_by_admin BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE reservations ADD COLUMN IF NOT EXISTS admin_note TEXT;

@@ -195,34 +195,34 @@ export function AdminSidebar({
                   </div>
                 ) : (
                   confirmedBookings.map((booking) => (
-                  <button
-                    key={booking.id}
-                    onClick={() => onEditBooking(booking)}
-                    className={`w-full rounded-xl border-l-4 p-3 text-left transition-colors hover:opacity-80 ${booking.color}`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium text-foreground">{booking.firstName}</div>
-                      <ReservationStatusBadge status={booking.status} />
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {showBookingDate && <span className="font-medium text-foreground/80">{booking.date} · </span>}
-                      {booking.time}-{booking.endTime}
-                    </div>
-                    {getTableLabel(booking) && (
-                      <div className="text-xs text-muted-foreground">{getTableLabel(booking)}</div>
-                    )}
-                    <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Users className="h-3 w-3" />
-                        {booking.guests}
-                      </span>
-                      {booking.note && (
-                        <span className="flex items-center gap-1">
-                          <MessageSquare className="h-3 w-3" />
-                        </span>
+                    <button
+                      key={booking.id}
+                      onClick={() => onEditBooking(booking)}
+                      className={`w-full rounded-xl border-l-4 p-3 text-left transition-colors hover:opacity-80 ${booking.color}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-medium text-foreground">{booking.firstName}</div>
+                        <ReservationStatusBadge status={booking.status} />
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {showBookingDate && <span className="font-medium text-foreground/80">{booking.date} · </span>}
+                        {booking.time}-{booking.endTime}
+                      </div>
+                      {getTableLabel(booking) && (
+                        <div className="text-xs text-muted-foreground">{getTableLabel(booking)}</div>
                       )}
-                    </div>
-                  </button>
+                      <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          {booking.guests}
+                        </span>
+                        {booking.note && (
+                          <span className="flex items-center gap-1">
+                            <MessageSquare className="h-3 w-3" />
+                          </span>
+                        )}
+                      </div>
+                    </button>
                   ))
                 )}
               </div>

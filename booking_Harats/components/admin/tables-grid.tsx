@@ -1,14 +1,16 @@
 "use client"
 
-import { Users, Lock } from "lucide-react"
+import { Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { Booking, Table } from "@/app/admin/page"
+import { ReservationArrivalControls } from "@/components/admin/reservation-arrival-controls"
 
 interface TablesGridProps {
   tables: Table[]
   bookings: Booking[]
   onEditBooking: (booking: Booking) => void
   onBlockTable: (table: Table) => void
+  onReservationUpdated?: (booking: Booking) => void
 }
 
 export function TablesGrid({
@@ -16,6 +18,7 @@ export function TablesGrid({
   bookings,
   onEditBooking,
   onBlockTable,
+  onReservationUpdated,
 }: TablesGridProps) {
   const getTableBookings = (tableId: number) => {
     return bookings
@@ -27,12 +30,9 @@ export function TablesGrid({
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:gap-4 xl:grid-cols-3 2xl:grid-cols-4">
       {tables.map((table) => {
         const tableBookings = getTableBookings(table.id)
-        
+
         return (
-          <div
-            key={table.id}
-            className="rounded-2xl border border-border bg-card p-3 sm:p-4"
-          >
+          <div key={table.id} className="rounded-2xl border border-border bg-card p-3 sm:p-4">
             <div className="mb-2 flex items-center justify-between sm:mb-3">
               <div className="flex items-center gap-2">
                 <h3 className="font-medium">{table.name}</h3>
@@ -64,29 +64,32 @@ export function TablesGrid({
                   </div>
                 ) : (
                   tableBookings.map((booking) => (
-                    <button
+                    <div
                       key={booking.id}
-                      onClick={() => onEditBooking(booking)}
-                      className={`w-full rounded-lg border-l-4 p-2 text-left transition-colors hover:opacity-80 ${booking.color}`}
+                      className={`w-full rounded-lg border-l-4 p-2 text-left ${booking.color}`}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] text-muted-foreground sm:text-xs">
-                          {booking.time}-{booking.endTime}
-                        </span>
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground sm:text-xs">
-                          <Users className="h-3 w-3" />
-                          {booking.guests}
-                        </span>
-                      </div>
-                      <div className="truncate text-sm font-medium text-foreground">
-                        {booking.firstName}
-                      </div>
-                      {booking.table_ids && booking.table_ids.length > 1 && (
-                        <div className="text-[10px] text-muted-foreground sm:text-xs">
-                          Объединенный стол: {booking.table_ids.join(" + ")}
+                      <button
+                        type="button"
+                        onClick={() => onEditBooking(booking)}
+                        className="w-full text-left transition-colors hover:opacity-80"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-muted-foreground sm:text-xs">
+                            {booking.time}-{booking.endTime}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground sm:text-xs">{booking.guests} гост.</span>
                         </div>
-                      )}
-                    </button>
+                        <div className="truncate text-sm font-medium text-foreground">{booking.firstName}</div>
+                        {booking.table_ids && booking.table_ids.length > 1 && (
+                          <div className="text-[10px] text-muted-foreground sm:text-xs">
+                            Столы: {booking.table_ids.join(" + ")}
+                          </div>
+                        )}
+                      </button>
+                      {booking.status === "confirmed" ? (
+                        <ReservationArrivalControls booking={booking} onUpdated={onReservationUpdated} layout="block" />
+                      ) : null}
+                    </div>
                   ))
                 )}
               </div>

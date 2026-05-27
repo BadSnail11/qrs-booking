@@ -42,6 +42,8 @@ import { adminSetSelectItems, partySizeOptions } from "@/lib/booking-limits"
 import type { Booking } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 import { ReservationStatusBadge } from "@/components/admin/reservation-status-badge"
+import { ArrivalStatusBadge } from "@/components/admin/arrival-status-badge"
+import { computeArrivalUiStatus } from "@/lib/arrival-status"
 
 interface EditBookingModalProps {
   isOpen: boolean
@@ -52,6 +54,7 @@ interface EditBookingModalProps {
   onCancel?: (booking: Booking) => void
   onRestore?: (booking: Booking) => void
   onDelete?: (bookingId: string) => void
+  onArrived?: (booking: Booking) => void
 }
 
 const timeSlots = [
@@ -70,6 +73,7 @@ export function EditBookingModal({
   onCancel,
   onRestore,
   onDelete,
+  onArrived,
 }: EditBookingModalProps) {
   const [date, setDate] = useState<Date>()
   const [showConfirmation, setShowConfirmation] = useState(false)
@@ -197,7 +201,12 @@ export function EditBookingModal({
           <DialogHeader>
             <div className="flex items-center justify-between gap-3 pr-8">
               <DialogTitle>Редактировать бронирование</DialogTitle>
-              <ReservationStatusBadge status={booking.status} />
+              <div className="flex flex-wrap items-center gap-2">
+                {booking.status === "confirmed" ? (
+                  <ArrivalStatusBadge status={computeArrivalUiStatus(booking)} />
+                ) : null}
+                <ReservationStatusBadge status={booking.status} />
+              </div>
             </div>
           </DialogHeader>
 
