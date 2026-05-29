@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS restaurants (
     public_guest_hours TEXT,
     floor_plan_svg TEXT,
     floor_plan_shapes JSONB NOT NULL DEFAULT '[]',
+    floor_plan_width REAL NOT NULL DEFAULT 800,
+    floor_plan_height REAL NOT NULL DEFAULT 600,
     floor_plan_annotations JSONB NOT NULL DEFAULT '[]',
     iiko_api_login TEXT,
     iiko_organization_id UUID,
@@ -32,6 +34,12 @@ CREATE TABLE IF NOT EXISTS tables (
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     can_unite BOOLEAN NOT NULL DEFAULT FALSE,
     unite_with_table_id INTEGER REFERENCES tables(id) ON DELETE SET NULL,
+    layout_x REAL,
+    layout_y REAL,
+    layout_w REAL,
+    layout_h REAL,
+    layout_rotation REAL NOT NULL DEFAULT 0,
+    layout_shape TEXT NOT NULL DEFAULT 'rect',
     iiko_table_id UUID,
     iiko_section_id UUID,
     CHECK (unite_with_table_id IS NULL OR unite_with_table_id <> id)
@@ -196,7 +204,9 @@ CREATE TABLE IF NOT EXISTS visitors (
     last_name TEXT NOT NULL DEFAULT '',
     names_locked BOOLEAN NOT NULL DEFAULT FALSE,
     marketing_consent BOOLEAN NOT NULL DEFAULT FALSE,
+    marketing_consent_at TIMESTAMPTZ,
     reservation_count INTEGER NOT NULL DEFAULT 0,
+    first_seen_at TIMESTAMPTZ,
     last_seen_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -208,10 +218,10 @@ CREATE TABLE IF NOT EXISTS visitors (
 CREATE TABLE IF NOT EXISTS reservation_sms_notifications (
     id SERIAL PRIMARY KEY,
     reservation_id INTEGER NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL,
-    phone TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    scheduled_for TIMESTAMP,
     sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(reservation_id, kind)
+    UNIQUE(reservation_id, event_type, scheduled_for)
 );
 
 
