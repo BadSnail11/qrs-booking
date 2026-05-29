@@ -6,12 +6,16 @@ services:
       POSTGRES_DB: qrs_booking
       POSTGRES_USER: qrs_user
       POSTGRES_PASSWORD: qrs_pass
+      IIKO_API_LOGIN: ${IIKO_API_LOGIN:-}
+      IIKO_ORGANIZATION_ID: ${IIKO_ORGANIZATION_ID:-}
+      IIKO_TERMINAL_GROUP_ID: ${IIKO_TERMINAL_GROUP_ID:-}
     ports:
       - "5433:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
-      - ./sql/qrs_booking_clean.sql:/docker-entrypoint-initdb.d/01_data.sql:ro
-      - ./sql/post_dump_migrations.sql:/docker-entrypoint-initdb.d/02_migrations.sql:ro
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./sql/02_iiko_credentials.sh:/docker-entrypoint-initdb.d/02_iiko_credentials.sh:ro
+      - ./sql/03_historical_data.sql:/docker-entrypoint-initdb.d/03_historical_data.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U qrs_user -d qrs_booking"]
       interval: 5s
