@@ -122,7 +122,7 @@ def send_phone_verification_code(restaurant_id: int, phone: str) -> dict:
     if recent and not recent.get("verified_at"):
         created_at = recent["created_at"]
         if isinstance(created_at, datetime):
-            elapsed = (datetime.now(timezone.utc) - created_at.replace(tzinfo=None)).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - created_at).total_seconds()
             if elapsed < RESEND_COOLDOWN_SECONDS:
                 wait = int(RESEND_COOLDOWN_SECONDS - elapsed)
                 raise ValueError(f"Подождите {wait} сек. перед повторной отправкой кода")
