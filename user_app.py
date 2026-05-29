@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
@@ -243,7 +243,7 @@ def create_booking():
             phone=phone,
             sets=int(body.get("sets", 1)),
             note=body.get("note"),
-            offer_accepted_at=datetime.utcnow(),
+            offer_accepted_at=datetime.now(timezone.utc),
             offer_document=offer_document or "oferta_mise_v3.pdf",
         )
     except ValueError as exc:

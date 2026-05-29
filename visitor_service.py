@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from db import execute_returning, query_all
 from phone_utils import normalize_phone
@@ -33,7 +33,7 @@ def is_phone_confirmed(restaurant_id, phone, *, valid_days=None) -> bool:
     seen_at = visitor.get("last_seen_at")
     if not isinstance(seen_at, datetime):
         return False
-    return seen_at >= datetime.utcnow() - timedelta(days=int(valid_days))
+    return seen_at >= datetime.now(timezone.utc) - timedelta(days=int(valid_days))
 
 
 def upsert_visitor(
