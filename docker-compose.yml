@@ -10,7 +10,8 @@ services:
       - "5433:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
-      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./sql/qrs_booking_clean.sql:/docker-entrypoint-initdb.d/01_data.sql:ro
+      - ./sql/post_dump_migrations.sql:/docker-entrypoint-initdb.d/02_migrations.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U qrs_user -d qrs_booking"]
       interval: 5s
@@ -36,11 +37,16 @@ services:
       OPEN_HOUR: 11
       CLOSE_HOUR: 22
       SLOT_MINUTES: 120
+      RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       ADMIN_WEB_URL: ${ADMIN_WEB_URL:-http://localhost:3000/admin}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
       RESEND_FROM_NAME: ${RESEND_FROM_NAME:-QRS Booking}
+      SMS_CENTRE_LOGIN: ${SMS_CENTRE_LOGIN:-}
+      SMS_CENTRE_PASSWORD: ${SMS_CENTRE_PASSWORD:-}
+      SMS_CENTRE_SENDER: ${SMS_CENTRE_SENDER:-booking.mise.by}
+      PHONE_VERIFICATION_SALT: ${PHONE_VERIFICATION_SALT:-mise-sms-salt}
     volumes:
       - menu_uploads:/data/menus
     depends_on:
@@ -70,11 +76,15 @@ services:
       OPEN_HOUR: 11
       CLOSE_HOUR: 22
       SLOT_MINUTES: 120
+      RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       ADMIN_WEB_URL: ${ADMIN_WEB_URL:-http://localhost:3000/admin}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
       RESEND_FROM_NAME: ${RESEND_FROM_NAME:-QRS Booking}
+      SMS_CENTRE_LOGIN: ${SMS_CENTRE_LOGIN:-}
+      SMS_CENTRE_PASSWORD: ${SMS_CENTRE_PASSWORD:-}
+      SMS_CENTRE_SENDER: ${SMS_CENTRE_SENDER:-booking.mise.by}
     volumes:
       - menu_uploads:/data/menus
     depends_on:
@@ -82,6 +92,73 @@ services:
         condition: service_healthy
     ports:
       - "8001:8001"
+
+  sms-reminders:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_MODULE: user_app:app
+        APP_PORT: 8000
+    container_name: qrs-sms-reminders
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: qrs_booking
+      DB_USER: qrs_user
+      DB_PASSWORD: qrs_pass
+      SLOT_MINUTES: 120
+      RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
+      SMS_CENTRE_LOGIN: ${SMS_CENTRE_LOGIN:-}
+      SMS_CENTRE_PASSWORD: ${SMS_CENTRE_PASSWORD:-}
+      SMS_CENTRE_SENDER: ${SMS_CENTRE_SENDER:-booking.mise.by}
+      SMS_REMINDER_HOURS_BEFORE: ${SMS_REMINDER_HOURS_BEFORE:-2}
+      SMS_REMINDER_INTERVAL_SECONDS: ${SMS_REMINDER_INTERVAL_SECONDS:-60}
+    command:
+      - sh
+      - -c
+      - |
+        echo "SMS reminder worker started (interval $${SMS_REMINDER_INTERVAL_SECONDS}s)"
+        while true; do
+          python send_sms_reminders.py || true
+          sleep "$${SMS_REMINDER_INTERVAL_SECONDS}"
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  iiko-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_MODULE: user_app:app
+        APP_PORT: 8000
+    container_name: qrs-iiko-sync
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: qrs_booking
+      DB_USER: qrs_user
+      DB_PASSWORD: qrs_pass
+      SLOT_MINUTES: 120
+      RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
+      IIKO_SYNC_INTERVAL_SECONDS: ${IIKO_SYNC_INTERVAL_SECONDS:-300}
+      IIKO_SYNC_DAYS_AHEAD: ${IIKO_SYNC_DAYS_AHEAD:-14}
+    command:
+      - sh
+      - -c
+      - |
+        echo "iiko sync worker started (interval $${IIKO_SYNC_INTERVAL_SECONDS}s)"
+        while true; do
+          python retry_iiko_sync.py || true
+          sleep "$${IIKO_SYNC_INTERVAL_SECONDS}"
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
   booking-harats:
     build:

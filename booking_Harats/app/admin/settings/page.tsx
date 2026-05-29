@@ -11,7 +11,8 @@ export default async function AdminSettingsPage({
     params.tab === "telegram" ||
     params.tab === "menu" ||
     params.tab === "dates" ||
-    params.tab === "sets"
+    params.tab === "sets" ||
+    params.tab === "iiko"
       ? params.tab
       : "tables"
 

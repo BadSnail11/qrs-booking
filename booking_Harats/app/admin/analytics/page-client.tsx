@@ -10,6 +10,7 @@ import type { Booking } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
@@ -110,9 +111,9 @@ export function AdminAnalyticsPageClient() {
       </div>
 
       <main className="mx-auto max-w-6xl p-4 lg:p-6">
-        <div className="mb-6 flex flex-wrap gap-4">
+        <div className="mb-6 flex flex-wrap items-end gap-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Период</label>
+            <Label className="text-sm font-medium">Период</Label>
             <Select value={period} onValueChange={(v) => setPeriod(v as PeriodType)}>
               <SelectTrigger className="w-44">
                 <SelectValue />
@@ -129,12 +130,15 @@ export function AdminAnalyticsPageClient() {
           {period === "custom" && (
             <>
               <div className="space-y-2">
-                <label className="text-sm font-medium">С</label>
+                <Label className="text-sm font-medium">С</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className={cn("w-44 justify-start text-left font-normal", !customStartDate && "text-muted-foreground")}
+                      className={cn(
+                        "h-9 w-44 justify-start text-left font-normal",
+                        !customStartDate && "text-muted-foreground"
+                      )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {customStartDate ? format(customStartDate, "d MMM yyyy", { locale: ru }) : "Выбрать дату"}
@@ -147,12 +151,15 @@ export function AdminAnalyticsPageClient() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">По</label>
+                <Label className="text-sm font-medium">По</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className={cn("w-44 justify-start text-left font-normal", !customEndDate && "text-muted-foreground")}
+                      className={cn(
+                        "h-9 w-44 justify-start text-left font-normal",
+                        !customEndDate && "text-muted-foreground"
+                      )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {customEndDate ? format(customEndDate, "d MMM yyyy", { locale: ru }) : "Выбрать дату"}
@@ -167,7 +174,7 @@ export function AdminAnalyticsPageClient() {
           )}
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Тип</label>
+            <Label className="text-sm font-medium">Тип</Label>
             <Select value={filterType} onValueChange={(v) => setFilterType(v as FilterType)}>
               <SelectTrigger className="w-44">
                 <SelectValue />
@@ -188,10 +195,13 @@ export function AdminAnalyticsPageClient() {
           </div>
         )}
 
-        <div className="mb-6 flex justify-end">
+        <div className="mb-6 flex flex-wrap justify-end gap-2">
+          <Button asChild variant="outline">
+            <Link href="/admin/visitors">CRM гостей</Link>
+          </Button>
           <Button asChild variant="outline">
             <a href={adminApi.getClientsDatabaseExport()} download>
-              Экспорт базы клиентов Excel
+              Экспорт базы гостей Excel
             </a>
           </Button>
         </div>

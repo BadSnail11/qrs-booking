@@ -19,6 +19,16 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { cn } from "@/lib/utils"
 import { adminSetSelectItems, partySizeOptions } from "@/lib/booking-limits"
 import { ReservationStatusBadge } from "@/components/admin/reservation-status-badge"
+import { ArrivalStatusBadge } from "@/components/admin/arrival-status-badge"
+import {
+  type ArrivalStoredStatus,
+  canAdminEditArrivalStatus,
+  computeArrivalUiStatus,
+  getAdminArrivalEditValue,
+  isAfterReservationSlot,
+  isBeforeReservationSlot,
+  normalizeBooking,
+} from "@/lib/arrival-status"
 
 const timeSlots = [
   "11:00", "11:30", "12:00", "12:30", "13:00", "13:30",
@@ -87,12 +97,13 @@ export function AdminEditReservationPageClient({
           adminApi.getReservations(targetDate),
           adminApi.getTables(targetDate),
         ])
-        const matched = (bookings as Booking[]).find((item) => item.id === reservationId)
+        const normalized = (bookings as Record<string, unknown>[]).map((row) => normalizeBooking(row))
+        const matched = normalized.find((item) => item.id === reservationId)
         if (!matched) {
           setPageError("Бронирование не найдено")
           return
         }
-        setExistingBookings(bookings as Booking[])
+        setExistingBookings(normalized)
         setTables(tablesData as Table[])
         setBooking(matched)
         setFormData({
@@ -352,6 +363,17 @@ export function AdminEditReservationPageClient({
     }
   }
 
+  const handleArrivalChange = async (status: ArrivalStoredStatus) => {
+    if (!booking || !canAdminEditArrivalStatus(booking)) return
+    setSubmitError("")
+    try {
+      const result = await adminApi.setReservationArrival(booking.id, status)
+      setBooking(normalizeBooking(result.reservation as Record<string, unknown>))
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Не удалось обновить статус прихода")
+    }
+  }
+
   const actionConfirmationText: Record<Exclude<PendingAction, null>, string> = {
     save: "Сохранить изменения бронирования?",
     confirm: "Подтвердить это бронирование?",
@@ -388,7 +410,14 @@ export function AdminEditReservationPageClient({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {booking && <ReservationStatusBadge status={booking.status} />}
+              {booking && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {booking.status === "confirmed" ? (
+                    <ArrivalStatusBadge status={computeArrivalUiStatus(booking)} />
+                  ) : null}
+                  <ReservationStatusBadge status={booking.status} />
+                </div>
+              )}
               <AdminLogoutButton />
             </div>
           </div>
@@ -549,6 +578,43 @@ export function AdminEditReservationPageClient({
                       <Label>Примечание</Label>
                       <Textarea value={formData.note} onChange={(e) => handleInputChange("note", e.target.value)} className="resize-none" />
                     </div>
+
+                    {booking.status === "confirmed" && (
+                      <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-4">
+                        <Label>Статус прихода гостя</Label>
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                          <span className="text-muted-foreground">В списке и на схеме:</span>
+                          <ArrivalStatusBadge status={computeArrivalUiStatus(booking)} />
+                        </div>
+
+                        {isBeforeReservationSlot(booking) ? (
+                          <p className="text-sm text-muted-foreground">
+                            До начала слота бронирования статус изменить нельзя. Сейчас отображается «Ожидает».
+                          </p>
+                        ) : (
+                          <>
+                            {isAfterReservationSlot(booking) && (
+                              <p className="text-sm text-amber-800 dark:text-amber-200">
+                                Слот завершён — в интерфейсе везде будет «Не актуально». Выбранный ниже статус
+                                («Пришёл» / «Не пришёл») сохраняется только для статистики.
+                              </p>
+                            )}
+                            <Select
+                              value={getAdminArrivalEditValue(booking)}
+                              onValueChange={(v) => void handleArrivalChange(v as ArrivalStoredStatus)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Выберите статус" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="arrived">Пришёл</SelectItem>
+                                <SelectItem value="no_show">Не пришёл</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {submitError && <div className="mt-4 text-sm text-destructive">{submitError}</div>}

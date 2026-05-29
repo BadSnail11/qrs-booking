@@ -6,6 +6,8 @@ from flask_cors import CORS
 
 from booking_service import (
     admin_confirm_reservation,
+    mark_reservation_arrived,
+    set_reservation_arrival_status,
     analytics_to_csv,
     clients_database_to_xlsx,
     delete_cancelled_reservation,
@@ -13,11 +15,14 @@ from booking_service import (
     cancel_reservation,
     combine_date_time,
     create_reservation,
+    split_customer_name,
     create_sets_choice_interval,
     delete_schedule_date_override,
     delete_sets_choice_interval,
     get_reservation,
     list_active_tables,
+    normalize_layout_for_db,
+    normalize_layout_shape,
     list_reservations,
     list_schedule_date_overrides,
     list_sets_choice_intervals_for_restaurant,
@@ -37,19 +42,23 @@ from db import execute, execute_returning, query_all
 from request_context import get_restaurant_id, set_restaurant_id
 from restaurants import (
     create_restaurant,
+    get_floor_plan,
     get_restaurant_by_id,
     get_menu_pdf_storage_name,
     guest_contact_public_dict,
     list_restaurants_all,
     menu_upload_dir,
     normalize_guest_contact_field,
+    patch_floor_plan,
     resolved_menu_file_path,
     set_menu_pdf_storage_name,
     set_public_guest_contact,
     update_restaurant,
     verify_restaurant_login,
 )
+import iiko_service
 from email_service import send_reservation_email
+from reservation_sms_service import send_reservation_sms
 from telegram_service import (
     add_telegram_recipient,
     delete_reservation_notifications,
@@ -57,6 +66,7 @@ from telegram_service import (
     list_telegram_recipients,
     notify_pending_reservation,
 )
+from visitor_service import list_visitors, upsert_visitor
 
 app = Flask(__name__)
 CORS(app)
@@ -437,6 +447,41 @@ def patch_public_guest_contact():
     return jsonify(guest_contact_public_dict(row))
 
 
+@app.get("/api/v1/settings/floor-plan")
+def settings_get_floor_plan():
+    fp = get_floor_plan(get_restaurant_id())
+    if not fp:
+        return jsonify({"error": "Restaurant not found"}), 404
+    return jsonify(fp)
+
+
+@app.patch("/api/v1/settings/floor-plan")
+def settings_patch_floor_plan():
+    body = request.get_json(silent=True) or {}
+    raw_w = body.get("floorPlanWidth", body.get("floor_plan_width"))
+    raw_h = body.get("floorPlanHeight", body.get("floor_plan_height"))
+    width = None
+    height = None
+    if raw_w is not None:
+        try:
+            width = int(raw_w)
+        except (TypeError, ValueError):
+            return jsonify({"error": "floorPlanWidth must be an integer"}), 400
+    if raw_h is not None:
+        try:
+            height = int(raw_h)
+        except (TypeError, ValueError):
+            return jsonify({"error": "floorPlanHeight must be an integer"}), 400
+    annotations = body.get("annotations") if "annotations" in body else None
+    try:
+        updated = patch_floor_plan(get_restaurant_id(), width=width, height=height, annotations=annotations)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    if not updated:
+        return jsonify({"error": "Restaurant not found"}), 404
+    return jsonify(updated)
+
+
 @app.post("/api/v1/tables")
 def create_table():
     body = request.get_json(silent=True) or {}
@@ -444,11 +489,24 @@ def create_table():
         return jsonify({"error": "capacity is required"}), 400
     can_unite = bool(body.get("can_unite", False))
     unite_with_table_id = body.get("unite_with_table_id")
+    layout_x = layout_y = layout_w = layout_h = layout_rotation = None
+    if "layout" in body:
+        try:
+            layout_x, layout_y, layout_w, layout_h, layout_rotation = normalize_layout_for_db(body.get("layout"))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+    try:
+        layout_shape = normalize_layout_shape(body.get("layoutShape") or body.get("layout_shape"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     try:
         row = execute_returning(
             """
-            INSERT INTO tables (restaurant_id, name, capacity, is_active, can_unite, unite_with_table_id)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO tables (
+                restaurant_id, name, capacity, is_active, can_unite, unite_with_table_id,
+                layout_x, layout_y, layout_w, layout_h, layout_rotation, layout_shape
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
             (
@@ -458,6 +516,12 @@ def create_table():
                 bool(body.get("is_active", True)),
                 can_unite,
                 None,
+                layout_x,
+                layout_y,
+                layout_w,
+                layout_h,
+                layout_rotation,
+                layout_shape,
             ),
         )
         partner_id = sync_unite_pair(row["id"], can_unite, unite_with_table_id)
@@ -482,28 +546,69 @@ def update_table(table_id):
         return jsonify({"error": "Table not found"}), 404
     can_unite = bool(body.get("can_unite", current[0]["can_unite"]))
     unite_with_table_id = body.get("unite_with_table_id")
+    cur = current[0]
+    layout_x = cur.get("layout_x")
+    layout_y = cur.get("layout_y")
+    layout_w = cur.get("layout_w")
+    layout_h = cur.get("layout_h")
+    layout_rotation = cur.get("layout_rotation")
+    if "layout" in body:
+        if body.get("layout") is None:
+            layout_x = layout_y = layout_w = layout_h = layout_rotation = None
+        else:
+            try:
+                layout_x, layout_y, layout_w, layout_h, layout_rotation = normalize_layout_for_db(body.get("layout"))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+    try:
+        layout_shape = normalize_layout_shape(cur.get("layout_shape"))
+    except ValueError:
+        layout_shape = "rectangle"
+    if "layout" in body and isinstance(body.get("layout"), dict) and body["layout"].get("shape"):
+        try:
+            layout_shape = normalize_layout_shape(body["layout"].get("shape"))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+    sk = body.get("layoutShape", body.get("layout_shape"))
+    if sk is not None:
+        try:
+            layout_shape = normalize_layout_shape(sk)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
     try:
         row = execute_returning(
-        """
-        UPDATE tables
-        SET name = %s,
-            capacity = %s,
-            is_active = %s,
-            can_unite = %s,
-            unite_with_table_id = %s
-        WHERE id = %s AND restaurant_id = %s
-        RETURNING *
-        """,
-        (
-            body.get("name", current[0]["name"]),
-            int(body.get("capacity", current[0]["capacity"])),
-            bool(body.get("is_active", current[0]["is_active"])),
-            can_unite,
-            None,
-            table_id,
-            get_restaurant_id(),
-        ),
-    )
+            """
+            UPDATE tables
+            SET name = %s,
+                capacity = %s,
+                is_active = %s,
+                can_unite = %s,
+                unite_with_table_id = %s,
+                layout_x = %s,
+                layout_y = %s,
+                layout_w = %s,
+                layout_h = %s,
+                layout_rotation = %s,
+                layout_shape = %s
+            WHERE id = %s AND restaurant_id = %s
+            RETURNING *
+            """,
+            (
+                body.get("name", cur["name"]),
+                int(body.get("capacity", cur["capacity"])),
+                bool(body.get("is_active", cur["is_active"])),
+                can_unite,
+                None,
+                layout_x,
+                layout_y,
+                layout_w,
+                layout_h,
+                layout_rotation,
+                layout_shape,
+                table_id,
+                get_restaurant_id(),
+            ),
+        )
         sync_unite_pair(table_id, can_unite, unite_with_table_id)
         row = query_all(
             "SELECT * FROM tables WHERE id = %s AND restaurant_id = %s",
@@ -631,6 +736,16 @@ def create_admin_reservation():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
+    phone = (body.get("phone") or "").strip()
+    if phone:
+        first_name, last_name = split_customer_name(customer_name)
+        upsert_visitor(
+            get_restaurant_id(),
+            phone,
+            first_name=first_name,
+            last_name=last_name,
+        )
+
     return jsonify(get_reservation(reservation["id"], restaurant_id=get_restaurant_id())), 201
 
 
@@ -662,7 +777,40 @@ def edit_reservation(reservation_id):
     if not updated:
         return jsonify({"error": "Reservation not found"}), 404
     send_reservation_email("edited", updated)
+    send_reservation_sms("edited", updated)
     return jsonify(updated)
+
+
+@app.post("/api/v1/reservations/<int:reservation_id>/arrived")
+def mark_arrived(reservation_id):
+    try:
+        reservation = mark_reservation_arrived(reservation_id)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    if not reservation:
+        return jsonify({"error": "Reservation not found"}), 404
+    return jsonify({"message": "Guest marked as arrived", "reservation": reservation})
+
+
+@app.patch("/api/v1/reservations/<int:reservation_id>/arrival")
+def patch_arrival(reservation_id):
+    body = request.get_json(silent=True) or {}
+    raw = body.get("arrival_status")
+    if raw is None and "arrivalStatus" in body:
+        raw = body.get("arrivalStatus")
+    if raw == "" or raw == "awaiting":
+        arrival_status = None
+    elif raw in ("arrived", "no_show"):
+        arrival_status = raw
+    elif raw is None:
+        return jsonify({"error": "arrival_status is required"}), 400
+    else:
+        return jsonify({"error": "Invalid arrival_status"}), 400
+    try:
+        reservation = set_reservation_arrival_status(reservation_id, arrival_status)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"message": "Arrival status updated", "reservation": reservation})
 
 
 @app.post("/api/v1/reservations/<int:reservation_id>/confirm")
@@ -674,6 +822,7 @@ def confirm_pending_reservation(reservation_id):
     reservation = get_reservation(reservation_id, restaurant_id=get_restaurant_id())
     if reservation:
         send_reservation_email("confirmed", reservation)
+        send_reservation_sms("confirmed", reservation)
     return jsonify({"message": "Reservation confirmed", "reservation": reservation})
 
 
@@ -724,6 +873,7 @@ def cancel(reservation_id):
     reservation = get_reservation(reservation_id, restaurant_id=get_restaurant_id())
     if reservation:
         send_reservation_email("cancelled", reservation)
+        send_reservation_sms("cancelled", reservation)
     return jsonify({"message": "Reservation cancelled", "reservation": reservation})
 
 
@@ -776,6 +926,13 @@ def clients_database_export():
     )
 
 
+@app.get("/api/v1/visitors")
+def visitors_list():
+    search = request.args.get("search")
+    limit = request.args.get("limit", type=int) or 500
+    return jsonify(list_visitors(search=search, limit=limit))
+
+
 @app.get("/api/v1/reservations/successful")
 def successful_reservations():
     rows = list_reservations(
@@ -800,3 +957,60 @@ def remove_table_block(block_id):
         (block_id, get_restaurant_id()),
     )
     return jsonify({"message": "Deleted"})
+
+
+# ── iiko integration endpoints ───────────────────────────────────────────
+
+
+@app.get("/api/v1/iiko/status")
+def iiko_status():
+    rid = get_restaurant_id()
+    config = iiko_service._get_restaurant_iiko_config(rid)
+    if not config:
+        return jsonify({"configured": False, "terminal_alive": False})
+    alive = iiko_service.is_terminal_alive(rid)
+    failed_count = query_all(
+        """
+        SELECT count(*) AS cnt FROM reservations
+        WHERE restaurant_id = %s AND status = 'confirmed'
+          AND iiko_creation_status = 'Error' AND iiko_reserve_id IS NULL
+        """,
+        (rid,),
+    )
+    return jsonify({
+        "configured": True,
+        "terminal_alive": alive,
+        "failed_sync_count": failed_count[0]["cnt"] if failed_count else 0,
+    })
+
+
+@app.post("/api/v1/iiko/retry-failed")
+def iiko_retry_failed():
+    rid = get_restaurant_id()
+    from booking_service import _sync_reservation_to_iiko
+    rows = query_all(
+        """
+        SELECT id FROM reservations
+        WHERE restaurant_id = %s AND status = 'confirmed'
+          AND iiko_reserve_id IS NULL
+          AND (iiko_creation_status = 'Error' OR iiko_creation_status IS NULL)
+          AND reservation_time > NOW()
+        ORDER BY reservation_time
+        """,
+        (rid,),
+    )
+    retried = 0
+    for row in rows:
+        _sync_reservation_to_iiko(row["id"], rid)
+        retried += 1
+    return jsonify({"retried": retried})
+
+
+@app.post("/api/v1/iiko/sync")
+def iiko_full_sync():
+    rid = get_restaurant_id()
+    from retry_iiko_sync import sync_restaurant
+    synced = sync_restaurant(rid)
+    if not synced:
+        return jsonify({"ok": False, "reason": "Terminal offline"}), 503
+    return jsonify({"ok": True})

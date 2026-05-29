@@ -105,11 +105,53 @@ export const userApi = {
       body: JSON.stringify(body),
     })
   },
+  getPhoneStatus(body: { restaurant: string; phone: string }) {
+    return userRequest<{
+      alreadyConfirmed: boolean
+      reason?: "visitor" | "session"
+      verificationToken?: string
+      expiresInSeconds?: number
+      firstName?: string
+      lastName?: string
+      namesLocked?: boolean
+    }>("/v1/phone/status", { method: "POST", body: JSON.stringify(body) })
+  },
+  sendPhoneVerificationCode(body: { restaurant: string; phone: string }) {
+    return userRequest<{
+      sent: boolean
+      alreadyConfirmed?: boolean
+      reason?: "visitor" | "session"
+      verificationToken?: string
+      expiresInSeconds?: number
+      firstName?: string
+      lastName?: string
+      namesLocked?: boolean
+      devCode?: string
+    }>("/v1/phone/send-code", { method: "POST", body: JSON.stringify(body) })
+  },
+  verifyPhoneCode(body: { restaurant: string; phone: string; code: string }) {
+    return userRequest<{ verificationToken: string; expiresInSeconds: number }>(
+      "/v1/phone/verify",
+      { method: "POST", body: JSON.stringify(body) }
+    )
+  },
 }
 
 export const adminApi = {
   getClientsDatabaseExport() {
     return `${ADMIN_API_URL}/v1/analytics/clients.xlsx`
+  },
+  getVisitors(search?: string) {
+    const q = search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : ""
+    return request<Array<{
+      id: number
+      phone: string
+      firstName: string
+      lastName: string
+      firstSeenAt: string | null
+      lastSeenAt: string | null
+      reservationCount: number
+    }>>(ADMIN_API_URL, `/v1/visitors${q}`)
   },
   getTelegramRecipients() {
     return request<Array<Record<string, unknown>>>(ADMIN_API_URL, "/v1/settings/telegram-recipients")
@@ -136,6 +178,36 @@ export const adminApi = {
       method: "PATCH",
       body: JSON.stringify(body),
     })
+  },
+  getFloorPlan() {
+    return request<{
+      floorPlanWidth: number
+      floorPlanHeight: number
+      annotations?: {
+        rooms: Array<{ id: string; name: string; x: number; y: number; w: number; h: number }>
+        exits: Array<{ id: string; label: string; x: number; y: number; w: number; h: number }>
+        bar: { x: number; y: number; w: number; h: number; label: string } | null
+      }
+    }>(ADMIN_API_URL, "/v1/settings/floor-plan")
+  },
+  patchFloorPlan(body: {
+    floorPlanWidth?: number
+    floorPlanHeight?: number
+    annotations?: {
+      rooms: Array<{ id: string; name: string; x: number; y: number; w: number; h: number }>
+      exits: Array<{ id: string; label: string; x: number; y: number; w: number; h: number }>
+      bar: { x: number; y: number; w: number; h: number; label: string } | null
+    }
+  }) {
+    return request<{
+      floorPlanWidth: number
+      floorPlanHeight: number
+      annotations?: {
+        rooms: Array<{ id: string; name: string; x: number; y: number; w: number; h: number }>
+        exits: Array<{ id: string; label: string; x: number; y: number; w: number; h: number }>
+        bar: { x: number; y: number; w: number; h: number; label: string } | null
+      }
+    }>(ADMIN_API_URL, "/v1/settings/floor-plan", { method: "PATCH", body: JSON.stringify(body) })
   },
   getSetsChoiceIntervals() {
     return request<Array<{ id: number; dateStart: string; dateEnd: string }>>(
@@ -264,6 +336,23 @@ export const adminApi = {
       { method: "POST" }
     )
   },
+  markReservationArrived(id: string) {
+    return request<{ message: string; reservation: Record<string, unknown> }>(
+      ADMIN_API_URL,
+      `/v1/reservations/${id}/arrived`,
+      { method: "POST" }
+    )
+  },
+  setReservationArrival(id: string, arrivalStatus: "arrived" | "no_show" | null) {
+    return request<{ message: string; reservation: Record<string, unknown> }>(
+      ADMIN_API_URL,
+      `/v1/reservations/${id}/arrival`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ arrival_status: arrivalStatus }),
+      }
+    )
+  },
   cancelReservation(id: string, reason?: string) {
     return request<{ message: string; reservation: Record<string, unknown> }>(
       ADMIN_API_URL,
@@ -314,6 +403,21 @@ export const adminApi = {
     return request<Record<string, unknown>>(ADMIN_API_URL, `/v1/super/restaurants/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
+    })
+  },
+  getIikoStatus() {
+    return request<{ configured: boolean; terminal_alive: boolean; failed_sync_count: number }>(
+      ADMIN_API_URL, "/v1/iiko/status"
+    )
+  },
+  iikoRetryFailed() {
+    return request<{ retried: number }>(ADMIN_API_URL, "/v1/iiko/retry-failed", {
+      method: "POST",
+    })
+  },
+  iikoSync() {
+    return request<{ ok: boolean; reason?: string }>(ADMIN_API_URL, "/v1/iiko/sync", {
+      method: "POST",
     })
   },
 }

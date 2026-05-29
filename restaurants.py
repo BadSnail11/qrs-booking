@@ -1,6 +1,9 @@
 import hashlib
+import json
 import os
 import re
+
+from booking_service import annotations_to_public, validate_floor_plan_annotations
 from db import execute, execute_returning, query_all, query_one
 
 _MENU_STORAGE_RE = re.compile(r"^\d+_[a-f0-9]{16}\.pdf$")
@@ -197,12 +200,63 @@ def get_restaurant_by_id(restaurant_id: int):
     return query_one(
         """
         SELECT id, slug, display_name, password_hash, is_active, created_at, menu_pdf_storage_name,
-               public_guest_address, public_guest_phone, public_guest_hours
+               public_guest_address, public_guest_phone, public_guest_hours,
+               floor_plan_width, floor_plan_height
         FROM restaurants
         WHERE id = %s
         """,
         (int(restaurant_id),),
     )
+
+
+def get_floor_plan(restaurant_id: int):
+    row = query_one(
+        """
+        SELECT floor_plan_width, floor_plan_height, floor_plan_annotations
+        FROM restaurants
+        WHERE id = %s
+        """,
+        (int(restaurant_id),),
+    )
+    if not row:
+        return None
+    ann = annotations_to_public(row.get("floor_plan_annotations"))
+    return {
+        "floorPlanWidth": int(row["floor_plan_width"]),
+        "floorPlanHeight": int(row["floor_plan_height"]),
+        "annotations": ann,
+    }
+
+
+def patch_floor_plan(restaurant_id: int, width: int | None = None, height: int | None = None, annotations=None):
+    cur = query_one(
+        """
+        SELECT floor_plan_width, floor_plan_height, floor_plan_annotations
+        FROM restaurants
+        WHERE id = %s
+        """,
+        (int(restaurant_id),),
+    )
+    if not cur:
+        return None
+    nw = int(cur["floor_plan_width"]) if width is None else int(width)
+    nh = int(cur["floor_plan_height"]) if height is None else int(height)
+    if nw < 200 or nw > 8000 or nh < 200 or nh > 8000:
+        raise ValueError("floor plan width and height must be between 200 and 8000")
+    ann_obj = validate_floor_plan_annotations(annotations) if annotations is not None else annotations_to_public(
+        cur.get("floor_plan_annotations")
+    )
+    execute(
+        """
+        UPDATE restaurants
+        SET floor_plan_width = %s,
+            floor_plan_height = %s,
+            floor_plan_annotations = %s::jsonb
+        WHERE id = %s
+        """,
+        (nw, nh, json.dumps(ann_obj), int(restaurant_id)),
+    )
+    return get_floor_plan(restaurant_id)
 
 
 def get_menu_pdf_storage_name(restaurant_id: int) -> str | None:
