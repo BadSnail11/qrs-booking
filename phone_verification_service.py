@@ -2,7 +2,7 @@ import hashlib
 import logging
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from db import execute, execute_returning, query_one
 from phone_utils import normalize_phone, phones_for_sms_api
@@ -74,7 +74,7 @@ def phone_already_confirmed(restaurant_id: int, phone: str) -> dict:
         expires = session.get("verified_expires_at")
         seconds = 0
         if expires:
-            seconds = max(0, int((expires - datetime.utcnow()).total_seconds()))
+            seconds = max(0, int((expires - datetime.now(timezone.utc)).total_seconds()))
         return {
             "alreadyConfirmed": True,
             "reason": "session",
@@ -122,13 +122,13 @@ def send_phone_verification_code(restaurant_id: int, phone: str) -> dict:
     if recent and not recent.get("verified_at"):
         created_at = recent["created_at"]
         if isinstance(created_at, datetime):
-            elapsed = (datetime.utcnow() - created_at.replace(tzinfo=None)).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - created_at.replace(tzinfo=None)).total_seconds()
             if elapsed < RESEND_COOLDOWN_SECONDS:
                 wait = int(RESEND_COOLDOWN_SECONDS - elapsed)
                 raise ValueError(f"Подождите {wait} сек. перед повторной отправкой кода")
 
     code = _generate_code()
-    expires_at = datetime.utcnow() + timedelta(minutes=CODE_TTL_MINUTES)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=CODE_TTL_MINUTES)
     row = execute_returning(
         """
         INSERT INTO phone_verification_challenges (
@@ -172,17 +172,17 @@ def verify_phone_code(restaurant_id: int, phone: str, code: str) -> dict:
         raise ValueError("Сначала запросите код подтверждения")
 
     if challenge.get("verified_at") and challenge.get("verified_token"):
-        if challenge.get("verified_expires_at") and challenge["verified_expires_at"] > datetime.utcnow():
+        if challenge.get("verified_expires_at") and challenge["verified_expires_at"] > datetime.now(timezone.utc):
             if not challenge.get("consumed_at"):
                 return {
                     "verificationToken": challenge["verified_token"],
                     "expiresInSeconds": int(
-                        (challenge["verified_expires_at"] - datetime.utcnow()).total_seconds()
+                        (challenge["verified_expires_at"] - datetime.now(timezone.utc)).total_seconds()
                     ),
                 }
         raise ValueError("Код устарел. Запросите новый.")
 
-    if challenge["expires_at"] <= datetime.utcnow():
+    if challenge["expires_at"] <= datetime.now(timezone.utc):
         raise ValueError("Код истёк. Запросите новый.")
 
     attempts = int(challenge.get("attempts") or 0) + 1
@@ -197,7 +197,7 @@ def verify_phone_code(restaurant_id: int, phone: str, code: str) -> dict:
         raise ValueError("Неверный код")
 
     token = secrets.token_urlsafe(32)
-    verified_expires_at = datetime.utcnow() + timedelta(minutes=TOKEN_TTL_MINUTES)
+    verified_expires_at = datetime.now(timezone.utc) + timedelta(minutes=TOKEN_TTL_MINUTES)
     execute(
         """
         UPDATE phone_verification_challenges
