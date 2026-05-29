@@ -173,13 +173,18 @@ CREATE TABLE IF NOT EXISTS telegram_notifications (
 CREATE TABLE IF NOT EXISTS phone_verification_challenges (
     id SERIAL PRIMARY KEY,
     restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
-    phone TEXT NOT NULL,
+    phone_normalized TEXT NOT NULL,
     code_hash TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    verified_at TIMESTAMPTZ
+    expires_at TIMESTAMPTZ NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    verified_at TIMESTAMPTZ,
+    verified_token TEXT,
+    verified_expires_at TIMESTAMPTZ,
+    consumed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_pvc_restaurant_phone ON phone_verification_challenges(restaurant_id, phone);
+CREATE INDEX IF NOT EXISTS idx_pvc_restaurant_phone ON phone_verification_challenges(restaurant_id, phone_normalized);
 
 -- ── Visitors ─────────────────────────────────────────────────────────────
 
