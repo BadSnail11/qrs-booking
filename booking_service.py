@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from openpyxl import Workbook
 from db import execute, execute_returning, query_all, query_one
 from request_context import get_restaurant_id
+import iiko_service
 
 RESTAURANT_TZ = os.getenv("RESTAURANT_TZ", "Europe/Moscow")
 SLOT_MINUTES = int(os.getenv("SLOT_MINUTES", "120"))
@@ -180,6 +181,85 @@ def build_customer_name(first_name=None, last_name=None, customer_name=None):
     if customer_name:
         return customer_name.strip()
     return " ".join(x for x in [first_name, last_name] if x and x.strip()).strip()
+
+
+def _sync_reservation_to_iiko(reservation_id, restaurant_id):
+    """Push a local reservation to iiko. Updates iiko columns on success or failure."""
+    row = query_one(
+        """
+        SELECT r.id, r.customer_name, r.phone, r.guests, r.note,
+               r.reservation_time, r.duration_minutes, r.restaurant_id,
+               string_agg(rt.table_id::text, ',') AS table_ids
+        FROM reservations r
+        LEFT JOIN reservation_tables rt ON rt.reservation_id = r.id
+        WHERE r.id = %s AND r.restaurant_id = %s
+        GROUP BY r.id
+        """,
+        (reservation_id, restaurant_id),
+    )
+    if not row:
+        return
+    first_name, last_name = split_customer_name(row["customer_name"])
+    table_ids = [int(x) for x in row["table_ids"].split(",")] if row.get("table_ids") else []
+    if not table_ids:
+        return
+    iiko_table_ids = iiko_service.get_iiko_table_ids(table_ids)
+    if not iiko_table_ids:
+        logger.warning("No iiko table mapping for reservation %s, skipping sync", reservation_id)
+        return
+    rt = row["reservation_time"]
+    if isinstance(rt, str):
+        rt = parse_iso_dt(rt)
+    estimated_start = rt.strftime("%Y-%m-%dT%H:%M:%S.000")
+    try:
+        info = iiko_service.create_reserve(
+            restaurant_id=restaurant_id,
+            customer_name=first_name,
+            customer_surname=last_name or None,
+            phone=row["phone"] or "+000000000",
+            guests_count=row["guests"],
+            table_ids=table_ids,
+            estimated_start_time=estimated_start,
+            duration_minutes=row["duration_minutes"],
+            comment=row["note"] or "",
+        )
+        execute(
+            """
+            UPDATE reservations
+            SET iiko_reserve_id = %s::uuid,
+                iiko_creation_status = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (info["id"], info.get("creationStatus", "InProgress"), reservation_id),
+        )
+        logger.info("Reservation %s synced to iiko: %s", reservation_id, info["id"])
+    except RuntimeError as e:
+        execute(
+            """
+            UPDATE reservations
+            SET iiko_creation_status = 'Error',
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (reservation_id,),
+        )
+        logger.error("Failed to sync reservation %s to iiko: %s", reservation_id, e)
+
+
+def _cancel_iiko_reserve(reservation_id, restaurant_id):
+    """Cancel the linked iiko reserve if one exists."""
+    row = query_one(
+        "SELECT iiko_reserve_id::text FROM reservations WHERE id = %s AND restaurant_id = %s",
+        (reservation_id, restaurant_id),
+    )
+    if not row or not row.get("iiko_reserve_id"):
+        return
+    try:
+        iiko_service.cancel_reserve(restaurant_id, row["iiko_reserve_id"], "Other")
+        logger.info("Cancelled iiko reserve %s for reservation %s", row["iiko_reserve_id"], reservation_id)
+    except RuntimeError as e:
+        logger.error("Failed to cancel iiko reserve for reservation %s: %s", reservation_id, e)
 
 
 def reservation_window(reservation_time):
@@ -869,6 +949,10 @@ def create_reservation(
             "INSERT INTO reservation_tables (reservation_id, table_id) VALUES (%s, %s)",
             (reservation["id"], table_id),
         )
+
+    if status == "confirmed":
+        _sync_reservation_to_iiko(reservation["id"], rid)
+
     return get_reservation(reservation["id"])
 
 
@@ -909,6 +993,8 @@ def reservation_payload(row):
         "table_ids": table_ids,
         "tableId": table_ids[0] if table_ids else None,
         "color": "bg-green-100 border-l-green-400" if row["status"] == "confirmed" else "bg-yellow-100 border-l-yellow-400",
+        "iiko_reserve_id": str(row["iiko_reserve_id"]) if row.get("iiko_reserve_id") else None,
+        "iiko_creation_status": row.get("iiko_creation_status"),
     }
 
 
@@ -1149,7 +1235,13 @@ def update_reservation(
             "INSERT INTO reservation_tables (reservation_id, table_id) VALUES (%s, %s)",
             (reservation_id, table_id),
         )
-    return get_reservation(reservation_id, restaurant_id=get_restaurant_id())
+
+    # Sync to iiko: cancel old reserve and create new one with updated details
+    rid = get_restaurant_id()
+    _cancel_iiko_reserve(reservation_id, rid)
+    _sync_reservation_to_iiko(reservation_id, rid)
+
+    return get_reservation(reservation_id, restaurant_id=rid)
 
 
 def confirm_reservation(reservation_id, code, restaurant_id=None):
@@ -1166,11 +1258,14 @@ def confirm_reservation(reservation_id, code, restaurant_id=None):
         """,
         (reservation_id, rid, code),
     )
+    if row:
+        _sync_reservation_to_iiko(reservation_id, rid)
     return row is not None
 
 
 def admin_confirm_reservation(reservation_id):
-    return execute_returning(
+    rid = get_restaurant_id()
+    row = execute_returning(
         """
         UPDATE reservations
         SET status = 'confirmed', updated_at = NOW()
@@ -1179,11 +1274,16 @@ def admin_confirm_reservation(reservation_id):
           AND status = 'pending'
         RETURNING id
         """,
-        (reservation_id, get_restaurant_id()),
+        (reservation_id, rid),
     )
+    if row:
+        _sync_reservation_to_iiko(reservation_id, rid)
+    return row
 
 
 def cancel_reservation(reservation_id, reason=None):
+    rid = get_restaurant_id()
+    _cancel_iiko_reserve(reservation_id, rid)
     return execute_returning(
         """
         UPDATE reservations
@@ -1194,7 +1294,7 @@ def cancel_reservation(reservation_id, reason=None):
         WHERE id = %s AND restaurant_id = %s
         RETURNING id
         """,
-        (reason, reservation_id, get_restaurant_id()),
+        (reason, reservation_id, rid),
     )
 
 

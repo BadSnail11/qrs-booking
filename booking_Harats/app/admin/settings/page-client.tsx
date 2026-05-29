@@ -5,7 +5,7 @@ import Link from "next/link"
 import { format, parseISO } from "date-fns"
 import { ru } from "date-fns/locale"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Armchair, CalendarRange, Clock3, FileText, Send, UtensilsCrossed } from "lucide-react"
+import { ArrowLeft, Armchair, CalendarRange, Clock3, FileText, Send, UtensilsCrossed, Wifi } from "lucide-react"
 import { AdminLogoutButton } from "@/components/admin/admin-logout-button"
 import { FloorPlanEditor } from "@/components/admin/floor-plan-editor"
 import type { FloorPlanAnnotations, ScheduleDay, Table, TableLayout, TableShape } from "@/app/admin/page"
@@ -73,7 +73,7 @@ const emptyFloorAnnotations = (): FloorPlanAnnotations => ({
 export function AdminSettingsPageClient({
   initialTab,
 }: {
-  initialTab: "tables" | "schedule" | "dates" | "sets" | "telegram" | "menu"
+  initialTab: "tables" | "schedule" | "dates" | "sets" | "telegram" | "menu" | "iiko"
 }) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState(initialTab)
@@ -126,6 +126,61 @@ export function AdminSettingsPageClient({
   const [shapeDrafts, setShapeDrafts] = useState<Record<number, TableShape>>({})
   const [planAnnotations, setPlanAnnotations] = useState<FloorPlanAnnotations>(emptyFloorAnnotations)
   const [isSavingFloorPlan, setIsSavingFloorPlan] = useState(false)
+
+  // iiko integration state
+  const [iikoConfigured, setIikoConfigured] = useState(false)
+  const [iikoTerminalAlive, setIikoTerminalAlive] = useState(false)
+  const [iikoFailedCount, setIikoFailedCount] = useState(0)
+  const [iikoLoading, setIikoLoading] = useState(false)
+  const [iikoSyncing, setIikoSyncing] = useState(false)
+  const [iikoRetrying, setIikoRetrying] = useState(false)
+  const [iikoMessage, setIikoMessage] = useState("")
+  const [iikoError, setIikoError] = useState("")
+
+  const loadIikoStatus = async () => {
+    setIikoLoading(true)
+    setIikoError("")
+    try {
+      const data = await adminApi.getIikoStatus()
+      setIikoConfigured(data.configured)
+      setIikoTerminalAlive(data.terminal_alive)
+      setIikoFailedCount(data.failed_sync_count)
+    } catch (e) {
+      setIikoError(e instanceof Error ? e.message : "Ошибка загрузки статуса iiko")
+    } finally {
+      setIikoLoading(false)
+    }
+  }
+
+  const handleIikoSync = async () => {
+    setIikoSyncing(true)
+    setIikoMessage("")
+    setIikoError("")
+    try {
+      await adminApi.iikoSync()
+      setIikoMessage("Синхронизация выполнена успешно")
+      await loadIikoStatus()
+    } catch (e) {
+      setIikoError(e instanceof Error ? e.message : "Ошибка синхронизации")
+    } finally {
+      setIikoSyncing(false)
+    }
+  }
+
+  const handleIikoRetry = async () => {
+    setIikoRetrying(true)
+    setIikoMessage("")
+    setIikoError("")
+    try {
+      const data = await adminApi.iikoRetryFailed()
+      setIikoMessage(`Повторная отправка: ${data.retried} бронирований`)
+      await loadIikoStatus()
+    } catch (e) {
+      setIikoError(e instanceof Error ? e.message : "Ошибка повторной отправки")
+    } finally {
+      setIikoRetrying(false)
+    }
+  }
 
   useEffect(() => {
     setActiveTab(initialTab)
@@ -221,6 +276,7 @@ export function AdminSettingsPageClient({
 
   useEffect(() => {
     void loadData()
+    if (initialTab === "iiko") void loadIikoStatus()
   }, [])
 
   const setTab = (tab: string) => {
@@ -230,10 +286,12 @@ export function AdminSettingsPageClient({
       tab !== "dates" &&
       tab !== "sets" &&
       tab !== "telegram" &&
-      tab !== "menu"
+      tab !== "menu" &&
+      tab !== "iiko"
     )
       return
     setActiveTab(tab)
+    if (tab === "iiko") void loadIikoStatus()
     router.replace(`/admin/settings?tab=${tab}`)
   }
 
@@ -663,6 +721,10 @@ export function AdminSettingsPageClient({
                 <TabsTrigger value="menu">
                   <FileText className="h-4 w-4" />
                   Меню PDF
+                </TabsTrigger>
+                <TabsTrigger value="iiko">
+                  <Wifi className="h-4 w-4" />
+                  iiko
                 </TabsTrigger>
               </TabsList>
             )}
@@ -1194,6 +1256,88 @@ export function AdminSettingsPageClient({
                 {guestContactSettingsError && (
                   <div className="text-sm text-destructive">{guestContactSettingsError}</div>
                 )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="iiko" className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Интеграция с iiko</h3>
+                  <Button variant="outline" size="sm" onClick={() => void loadIikoStatus()} disabled={iikoLoading}>
+                    {iikoLoading ? "Загрузка…" : "Обновить статус"}
+                  </Button>
+                </div>
+
+                {iikoError && (
+                  <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                    {iikoError}
+                  </div>
+                )}
+                {iikoMessage && (
+                  <div className="rounded-md border border-green-500/50 bg-green-50 p-3 text-sm text-green-700">
+                    {iikoMessage}
+                  </div>
+                )}
+
+                <div className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium w-40">Конфигурация:</span>
+                    {iikoConfigured ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                        Настроена
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                        <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
+                        Не настроена
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium w-40">Терминал (POS):</span>
+                    {iikoTerminalAlive ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                        Онлайн
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">
+                        <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                        Оффлайн
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium w-40">Ошибки синхронизации:</span>
+                    {iikoFailedCount > 0 ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-700">
+                        {iikoFailedCount} бронирований не отправлено
+                      </span>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">Нет</span>
+                    )}
+                  </div>
+                </div>
+
+                {iikoConfigured && (
+                  <div className="flex gap-3">
+                    <Button onClick={() => void handleIikoSync()} disabled={iikoSyncing || iikoRetrying}>
+                      {iikoSyncing ? "Синхронизация…" : "Полная синхронизация"}
+                    </Button>
+                    {iikoFailedCount > 0 && (
+                      <Button variant="outline" onClick={() => void handleIikoRetry()} disabled={iikoSyncing || iikoRetrying}>
+                        {iikoRetrying ? "Отправка…" : `Повторить отправку (${iikoFailedCount})`}
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                <div className="rounded-md border border-muted bg-muted/30 p-3 text-sm text-muted-foreground space-y-1">
+                  <p>Синхронизация с iiko происходит автоматически каждые 5 минут.</p>
+                  <p>Бронирования создаются сначала в нашей системе, затем отправляются в iiko.</p>
+                  <p>Если терминал оффлайн, отправка будет повторена автоматически.</p>
+                </div>
               </div>
             </TabsContent>
           </Tabs>

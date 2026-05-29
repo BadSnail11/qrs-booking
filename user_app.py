@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 
 from flask import Flask, jsonify, request, send_file
@@ -13,6 +14,8 @@ from booking_service import (
     confirm_reservation,
     split_customer_name,
 )
+
+logger = logging.getLogger(__name__)
 from phone_utils import normalize_phone
 from phone_verification_service import (
     booking_phone_verified,
@@ -46,6 +49,8 @@ def _user_set_restaurant():
     if path in ("/api/v1/restaurants",):
         return None
     if path.startswith("/api/v1/menus/"):
+        return None
+    if path == "/api/v1/iiko/webhook":
         return None
     if path == "/health":
         return None
@@ -291,3 +296,61 @@ def confirm_booking(reservation_id):
         send_reservation_email("confirmed", reservation)
         send_reservation_sms("confirmed", reservation)
     return jsonify({"message": "Reservation confirmed", "reservation": reservation})
+
+
+# ── iiko webhook receiver ────────────────────────────────────────────────
+
+
+@app.post("/api/v1/iiko/webhook")
+def iiko_webhook():
+    """Receive webhook events from iiko Cloud API.
+
+    iiko sends a flat list of event objects. Each has an eventType field.
+    We handle reserve-related events to keep local status in sync.
+    """
+    from db import execute, query_one
+
+    body = request.get_json(silent=True) or {}
+    logger.info("iiko webhook received: %s", {k: v for k, v in body.items() if k != "eventInfo"})
+
+    for event_info in body.get("eventInfo", []):
+        event_type = event_info.get("eventType") or body.get("eventType", "")
+        iiko_reserve_id = event_info.get("id") or event_info.get("reserveId")
+        if not iiko_reserve_id:
+            continue
+
+        row = query_one(
+            "SELECT id, status FROM reservations WHERE iiko_reserve_id = %s::uuid",
+            (iiko_reserve_id,),
+        )
+        if not row:
+            logger.info("iiko webhook: unknown reserve %s (may be synced later)", iiko_reserve_id)
+            continue
+
+        status = event_info.get("status")
+
+        # Reserve cancelled at POS
+        if status in ("Cancelled", "Deleted") and row["status"] == "confirmed":
+            execute(
+                """
+                UPDATE reservations
+                SET status = 'cancelled',
+                    cancelled_at = NOW(),
+                    iiko_creation_status = %s,
+                    admin_note = COALESCE(admin_note, '') || ' [cancelled in iiko]',
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (status, row["id"]),
+            )
+            logger.info("iiko webhook: reservation %s cancelled (iiko status: %s)", row["id"], status)
+
+        # Reserve creation status update (InProgress -> Success/Error)
+        elif status and status != row.get("status"):
+            execute(
+                "UPDATE reservations SET iiko_creation_status = %s, updated_at = NOW() WHERE id = %s",
+                (status, row["id"]),
+            )
+            logger.info("iiko webhook: reservation %s iiko_status -> %s", row["id"], status)
+
+    return jsonify({"ok": True})

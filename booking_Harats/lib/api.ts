@@ -405,4 +405,19 @@ export const adminApi = {
       body: JSON.stringify(body),
     })
   },
+  getIikoStatus() {
+    return request<{ configured: boolean; terminal_alive: boolean; failed_sync_count: number }>(
+      ADMIN_API_URL, "/v1/iiko/status"
+    )
+  },
+  iikoRetryFailed() {
+    return request<{ retried: number }>(ADMIN_API_URL, "/v1/iiko/retry-failed", {
+      method: "POST",
+    })
+  },
+  iikoSync() {
+    return request<{ ok: boolean; reason?: string }>(ADMIN_API_URL, "/v1/iiko/sync", {
+      method: "POST",
+    })
+  },
 }

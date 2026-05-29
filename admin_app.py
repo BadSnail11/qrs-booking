@@ -56,6 +56,7 @@ from restaurants import (
     update_restaurant,
     verify_restaurant_login,
 )
+import iiko_service
 from email_service import send_reservation_email
 from reservation_sms_service import send_reservation_sms
 from telegram_service import (
@@ -956,3 +957,60 @@ def remove_table_block(block_id):
         (block_id, get_restaurant_id()),
     )
     return jsonify({"message": "Deleted"})
+
+
+# ── iiko integration endpoints ───────────────────────────────────────────
+
+
+@app.get("/api/v1/iiko/status")
+def iiko_status():
+    rid = get_restaurant_id()
+    config = iiko_service._get_restaurant_iiko_config(rid)
+    if not config:
+        return jsonify({"configured": False, "terminal_alive": False})
+    alive = iiko_service.is_terminal_alive(rid)
+    failed_count = query_all(
+        """
+        SELECT count(*) AS cnt FROM reservations
+        WHERE restaurant_id = %s AND status = 'confirmed'
+          AND iiko_creation_status = 'Error' AND iiko_reserve_id IS NULL
+        """,
+        (rid,),
+    )
+    return jsonify({
+        "configured": True,
+        "terminal_alive": alive,
+        "failed_sync_count": failed_count[0]["cnt"] if failed_count else 0,
+    })
+
+
+@app.post("/api/v1/iiko/retry-failed")
+def iiko_retry_failed():
+    rid = get_restaurant_id()
+    from booking_service import _sync_reservation_to_iiko
+    rows = query_all(
+        """
+        SELECT id FROM reservations
+        WHERE restaurant_id = %s AND status = 'confirmed'
+          AND iiko_reserve_id IS NULL
+          AND (iiko_creation_status = 'Error' OR iiko_creation_status IS NULL)
+          AND reservation_time > NOW()
+        ORDER BY reservation_time
+        """,
+        (rid,),
+    )
+    retried = 0
+    for row in rows:
+        _sync_reservation_to_iiko(row["id"], rid)
+        retried += 1
+    return jsonify({"retried": retried})
+
+
+@app.post("/api/v1/iiko/sync")
+def iiko_full_sync():
+    rid = get_restaurant_id()
+    from retry_iiko_sync import sync_restaurant
+    synced = sync_restaurant(rid)
+    if not synced:
+        return jsonify({"ok": False, "reason": "Terminal offline"}), 503
+    return jsonify({"ok": True})

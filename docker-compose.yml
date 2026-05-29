@@ -10,7 +10,8 @@ services:
       - "5433:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
-      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./sql/qrs_booking_clean.sql:/docker-entrypoint-initdb.d/01_data.sql:ro
+      - ./sql/post_dump_migrations.sql:/docker-entrypoint-initdb.d/02_migrations.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U qrs_user -d qrs_booking"]
       interval: 5s
@@ -121,6 +122,38 @@ services:
         while true; do
           python send_sms_reminders.py || true
           sleep "$${SMS_REMINDER_INTERVAL_SECONDS}"
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  iiko-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_MODULE: user_app:app
+        APP_PORT: 8000
+    container_name: qrs-iiko-sync
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: qrs_booking
+      DB_USER: qrs_user
+      DB_PASSWORD: qrs_pass
+      SLOT_MINUTES: 120
+      RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
+      IIKO_SYNC_INTERVAL_SECONDS: ${IIKO_SYNC_INTERVAL_SECONDS:-300}
+      IIKO_SYNC_DAYS_AHEAD: ${IIKO_SYNC_DAYS_AHEAD:-14}
+    command:
+      - sh
+      - -c
+      - |
+        echo "iiko sync worker started (interval $${IIKO_SYNC_INTERVAL_SECONDS}s)"
+        while true; do
+          python retry_iiko_sync.py || true
+          sleep "$${IIKO_SYNC_INTERVAL_SECONDS}"
         done
     depends_on:
       postgres:
