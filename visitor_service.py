@@ -58,9 +58,9 @@ def upsert_visitor(
         return execute_returning(
             f"""
             INSERT INTO visitors (
-                restaurant_id, phone, first_name, last_name, reservation_count
+                restaurant_id, phone, first_name, last_name, reservation_count, last_seen_at
             )
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, NOW())
             ON CONFLICT (restaurant_id, phone) DO UPDATE SET
                 first_name = CASE
                     WHEN COALESCE(TRIM(visitors.first_name), '') = '' THEN EXCLUDED.first_name
@@ -82,9 +82,9 @@ def upsert_visitor(
         f"""
         INSERT INTO visitors (
             restaurant_id, phone, first_name, last_name, reservation_count,
-            marketing_consent, marketing_consent_at
+            marketing_consent, marketing_consent_at, last_seen_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s, CASE WHEN %s THEN NOW() ELSE NULL END)
+        VALUES (%s, %s, %s, %s, %s, %s, CASE WHEN %s THEN NOW() ELSE NULL END, NOW())
         ON CONFLICT (restaurant_id, phone) DO UPDATE SET
             first_name = CASE
                 WHEN COALESCE(TRIM(visitors.first_name), '') = '' THEN EXCLUDED.first_name
