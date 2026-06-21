@@ -1208,10 +1208,6 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
               <Label className="text-xs text-muted-foreground">
                 Время начала <span className="text-destructive">*</span>
               </Label>
-              <span className="flex items-center gap-1 text-[10px] text-primary">
-                <Timer className="h-3 w-3" />
-                2 часа
-              </span>
             </div>
             {!isReadyForTimeSelection ? (
               <div

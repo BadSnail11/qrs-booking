@@ -102,12 +102,14 @@ def _pull_iiko_to_local(restaurant_id):
     )
     local_by_iiko_id = {r["iiko_reserve_id"]: r["status"] for r in local_rows}
 
+    iiko_active_ids = set()
     for reserve in iiko_reserves:
         iiko_id = reserve.get("id")
         if not iiko_id:
             continue
 
         iiko_status = reserve.get("status", "")
+        iiko_active_ids.add(iiko_id)
 
         if iiko_id in local_by_iiko_id:
             local_status = local_by_iiko_id[iiko_id]
@@ -144,6 +146,38 @@ def _pull_iiko_to_local(restaurant_id):
             else:
                 if _create_local_from_iiko(restaurant_id, reserve):
                     stats["created"] += 1
+
+    # Cancelled reserves disappear from workload entirely — check any confirmed local
+    # reservations linked to iiko that are missing from the workload response.
+    for iiko_id, local_status in local_by_iiko_id.items():
+        if local_status != "confirmed":
+            continue
+        if iiko_id in iiko_active_ids:
+            continue
+        # This reserve was not in the workload — check its actual status in iiko
+        try:
+            status_data = iiko_service.get_reserve_status(restaurant_id, iiko_id)
+            if not status_data:
+                continue
+            detail = (status_data or {}).get("reserve") or {}
+            is_deleted = status_data.get("isDeleted")
+            iiko_status = detail.get("status", "")
+            if is_deleted or iiko_status in ("Cancelled", "Deleted"):
+                execute(
+                    """
+                    UPDATE reservations
+                    SET status = 'cancelled',
+                        cancelled_at = NOW(),
+                        admin_note = COALESCE(admin_note, '') || ' [cancelled in iiko]',
+                        updated_at = NOW()
+                    WHERE iiko_reserve_id = %s::uuid AND restaurant_id = %s
+                    """,
+                    (iiko_id, restaurant_id),
+                )
+                logger.info("Cancelled local reservation (iiko reserve %s missing/deleted from POS)", iiko_id)
+                stats["cancelled_local"] += 1
+        except Exception as e:
+            logger.error("Failed to check status of missing iiko reserve %s: %s", iiko_id, e)
 
     logger.info(
         "iiko->local pull for restaurant %s: created=%s linked=%s cancelled_local=%s cancelled_iiko=%s",

@@ -6,6 +6,7 @@ import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { ArrowLeft, CalendarIcon, AlertTriangle, Users, X, Check, Phone, Mail, MessageSquare, UtensilsCrossed, Timer } from "lucide-react"
 import { AdminLogoutButton } from "@/components/admin/admin-logout-button"
+//@ts-expect-error
 import type { Booking, ScheduleDay, Table } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -481,10 +482,6 @@ export function AdminCreateReservationPageClient({
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <Label>Время начала</Label>
-                    <span className="flex items-center gap-1 text-[10px] text-primary">
-                      <Timer className="h-3 w-3" />
-                      2 часа
-                    </span>
                   </div>
                   <Select value={formData.time} onValueChange={(value) => setFormData((prev) => ({ ...prev, time: value, tableOptionKey: "" }))}>
                     <SelectTrigger className="h-12 rounded-xl">
