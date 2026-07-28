@@ -94,13 +94,14 @@ def _pull_iiko_to_local(restaurant_id):
     # Build a set of iiko reserve IDs we know about locally
     local_rows = query_all(
         """
-        SELECT iiko_reserve_id::text, status
+        SELECT id, iiko_reserve_id::text AS iiko_reserve_id, status,
+               reservation_time, guests
         FROM reservations
         WHERE restaurant_id = %s AND iiko_reserve_id IS NOT NULL
         """,
         (restaurant_id,),
     )
-    local_by_iiko_id = {r["iiko_reserve_id"]: r["status"] for r in local_rows}
+    local_by_iiko_id = {r["iiko_reserve_id"]: r for r in local_rows}
 
     iiko_active_ids = set()
     for reserve in iiko_reserves:
@@ -112,7 +113,8 @@ def _pull_iiko_to_local(restaurant_id):
         iiko_active_ids.add(iiko_id)
 
         if iiko_id in local_by_iiko_id:
-            local_status = local_by_iiko_id[iiko_id]
+            local = local_by_iiko_id[iiko_id]
+            local_status = local["status"]
 
             # Cancelled in iiko but still confirmed locally -> cancel locally
             if iiko_status in ("Cancelled", "Deleted") and local_status == "confirmed":
@@ -139,6 +141,11 @@ def _pull_iiko_to_local(restaurant_id):
                 except RuntimeError as e:
                     logger.error("Failed to cancel iiko reserve %s: %s", iiko_id, e)
 
+            # Both active -> pull any edits (date/time/guests/tables) made in POS
+            elif local_status == "confirmed" and iiko_status not in ("Cancelled", "Deleted"):
+                if _sync_reserve_edits(restaurant_id, reserve, local):
+                    stats["updated"] = stats.get("updated", 0) + 1
+
         else:
             # New in iiko, doesn't exist locally — but check for unlinked match first
             if _try_link_existing(restaurant_id, reserve):
@@ -149,8 +156,8 @@ def _pull_iiko_to_local(restaurant_id):
 
     # Cancelled reserves disappear from workload entirely — check any confirmed local
     # reservations linked to iiko that are missing from the workload response.
-    for iiko_id, local_status in local_by_iiko_id.items():
-        if local_status != "confirmed":
+    for iiko_id, local in local_by_iiko_id.items():
+        if local["status"] != "confirmed":
             continue
         if iiko_id in iiko_active_ids:
             continue
@@ -180,8 +187,9 @@ def _pull_iiko_to_local(restaurant_id):
             logger.error("Failed to check status of missing iiko reserve %s: %s", iiko_id, e)
 
     logger.info(
-        "iiko->local pull for restaurant %s: created=%s linked=%s cancelled_local=%s cancelled_iiko=%s",
-        restaurant_id, stats["created"], stats.get("linked", 0),
+        "iiko->local pull for restaurant %s: created=%s linked=%s updated=%s "
+        "cancelled_local=%s cancelled_iiko=%s",
+        restaurant_id, stats["created"], stats.get("linked", 0), stats.get("updated", 0),
         stats["cancelled_local"], stats["cancelled_iiko"],
     )
     return stats
@@ -336,6 +344,124 @@ def _create_local_from_iiko(restaurant_id, iiko_reserve):
     logger.info(
         "Created local reservation %s from iiko reserve %s (%s, %s guests)",
         row["id"] if row else "?", iiko_id, customer_name, guests,
+    )
+    return True
+
+
+def _sync_reserve_edits(restaurant_id, iiko_reserve, local):
+    """Pull edits made directly in the POS into an already-linked local reservation.
+
+    For reserves that originated in iiko (same iiko_reserve_id kept), iiko is the
+    source of truth. The workload only reports create/cancel, so date/time, guest
+    count and table changes made at the POS are otherwise never reflected locally —
+    which makes reminders fire on the stale date. Compares and updates in place.
+
+    Returns True if anything changed.
+    """
+    iiko_id = iiko_reserve.get("id")
+
+    # Parse new start time. iiko returns "2026-05-28 19:00:00.000" (space sep, naive
+    # restaurant-local time). Local reservation_time is a naive local timestamp too.
+    est_time_str = iiko_reserve.get("estimatedStartTime", "")
+    if not est_time_str:
+        return False
+    est_time_str = est_time_str.replace(" ", "T")
+    try:
+        new_time = datetime.fromisoformat(est_time_str.split(".")[0])
+    except ValueError:
+        logger.error("Cannot parse iiko time '%s' for reserve %s", est_time_str, iiko_id)
+        return False
+
+    set_clauses = []
+    params = []
+    notes = []
+
+    old_time = local.get("reservation_time")
+    if old_time is not None and old_time.tzinfo is not None:
+        old_time = old_time.replace(tzinfo=None)
+    time_changed = old_time is None or abs((new_time - old_time).total_seconds()) >= 60
+    if time_changed:
+        set_clauses.append("reservation_time = %s")
+        params.append(new_time)
+        notes.append(f"time {old_time} -> {new_time}")
+
+    new_guests = iiko_reserve.get("guestsCount")
+    if new_guests is not None and new_guests != local.get("guests"):
+        set_clauses.append("guests = %s")
+        params.append(new_guests)
+        notes.append(f"guests {local.get('guests')} -> {new_guests}")
+
+    if not set_clauses:
+        # Nothing on the row changed — tables are handled separately below only
+        # if the workload carried them, so return early when it didn't.
+        return _sync_reserve_tables(restaurant_id, iiko_reserve, local)
+
+    set_clauses.append("updated_at = NOW()")
+    set_clauses.append("admin_note = COALESCE(admin_note, '') || %s")
+    params.append(" [iiko edit: " + "; ".join(notes) + "]")
+    params.extend([iiko_id, restaurant_id])
+
+    execute(
+        f"""
+        UPDATE reservations
+        SET {", ".join(set_clauses)}
+        WHERE iiko_reserve_id = %s::uuid AND restaurant_id = %s
+        """,
+        tuple(params),
+    )
+    logger.info(
+        "Updated local reservation %s from iiko reserve %s (%s)",
+        local.get("id"), iiko_id, "; ".join(notes),
+    )
+
+    if time_changed:
+        # The 2h reminder is deduped by (reservation_id, event_type). A reminder
+        # sent for the OLD date would block a corrected one — clear it so the
+        # reminder fires again for the new time.
+        execute(
+            """
+            DELETE FROM reservation_sms_notifications
+            WHERE reservation_id = %s AND event_type = 'reminder_2h'
+            """,
+            (local["id"],),
+        )
+
+    _sync_reserve_tables(restaurant_id, iiko_reserve, local)
+    return True
+
+
+def _sync_reserve_tables(restaurant_id, iiko_reserve, local):
+    """Sync table assignment from iiko if the workload carried tableIds.
+
+    Only acts when iiko reports a non-empty, mappable table set — an absent or
+    empty tableIds is treated as "no info", never as "clear the tables", to avoid
+    wiping local assignments on partial workload responses.
+
+    Returns True if tables were changed.
+    """
+    iiko_table_ids = iiko_reserve.get("tableIds")
+    if not iiko_table_ids:
+        return False
+    new_local_ids = iiko_service.get_local_table_ids(iiko_table_ids)
+    if not new_local_ids:
+        return False
+
+    current = query_all(
+        "SELECT table_id FROM reservation_tables WHERE reservation_id = %s",
+        (local["id"],),
+    )
+    if set(r["table_id"] for r in current) == set(new_local_ids):
+        return False
+
+    execute("DELETE FROM reservation_tables WHERE reservation_id = %s", (local["id"],))
+    for table_id in new_local_ids:
+        execute(
+            "INSERT INTO reservation_tables (reservation_id, table_id) VALUES (%s, %s)",
+            (local["id"], table_id),
+        )
+    logger.info(
+        "Updated tables for local reservation %s from iiko reserve %s: %s",
+        local["id"], iiko_reserve.get("id"), new_local_ids,
     )
     return True
 
