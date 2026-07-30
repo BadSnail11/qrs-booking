@@ -17,41 +17,28 @@ logger = logging.getLogger(__name__)
 SMS_REMINDER_HOURS_BEFORE = int(os.getenv("SMS_REMINDER_HOURS_BEFORE", "2"))
 
 
-def _table_label(table_ids):
-    if not table_ids:
-        return "Автоподбор"
-    rows = query_all(
-        "SELECT id, name FROM tables WHERE id = ANY(%s::int[]) ORDER BY id",
-        (list(table_ids),),
-    )
-    names_by_id = {row["id"]: row["name"] for row in rows}
-    return " + ".join(names_by_id.get(table_id, f"#{table_id}") for table_id in table_ids)
-
-
 def _message_for_event(event_type, reservation):
     rid = reservation.get("id")
     date = reservation.get("date")
     time = reservation.get("time")
-    end_time = reservation.get("endTime")
     guests = reservation.get("guests")
     sets = format_sets_display(reservation.get("sets"))
-    table = _table_label(reservation.get("table_ids") or [])
     if event_type == "confirmed":
         return (
-            f"Бронь #{rid} подтверждена. {date} {time}-{end_time}, гостей: {guests}, "
-            f"сеты: {sets}, стол: {table}."
+            f"Бронь #{rid} подтверждена. {date} {time}, гостей: {guests}, "
+            f"сеты: {sets}."
         )
     if event_type == "edited":
         return (
-            f"Бронь #{rid} изменена. Новые данные: {date} {time}-{end_time}, гостей: {guests}, "
-            f"сеты: {sets}, стол: {table}."
+            f"Бронь #{rid} изменена. Новые данные: {date} {time}, гостей: {guests}, "
+            f"сеты: {sets}."
         )
     if event_type == "cancelled":
         return f"Бронь #{rid} отменена. Если это ошибка, свяжитесь с рестораном."
     if event_type == "reminder_2h":
         return (
             f"Напоминание: через {SMS_REMINDER_HOURS_BEFORE} ч. бронь #{rid}. "
-            f"{date} {time}-{end_time}, гостей: {guests}, стол: {table}."
+            f"{date} {time}, гостей: {guests}."
         )
     raise ValueError("Unsupported reservation sms event")
 
