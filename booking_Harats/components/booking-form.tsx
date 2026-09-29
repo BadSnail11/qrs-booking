@@ -63,6 +63,7 @@ type ReservationDetails = {
   id: string
   date: string
   time: string
+  endTime?: string
   status?: "confirmed" | "pending" | "cancelled"
   guests?: number
   sets?: number
@@ -175,6 +176,17 @@ function phoneDigitsKey(phone: string) {
   return phone.replace(/\D/g, "")
 }
 
+const DEFAULT_SLOT_MINUTES = 120
+
+function addMinutesToTime(time: string, minutes: number): string | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(time)
+  if (!match) return null
+  const total = (parseInt(match[1], 10) * 60 + parseInt(match[2], 10) + minutes) % (24 * 60)
+  const hours = Math.floor(total / 60)
+  const mins = total % 60
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`
+}
+
 type PhoneConfirmedStatus = {
   alreadyConfirmed?: boolean
   verificationToken?: string
@@ -199,6 +211,7 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
   const [showHistory, setShowHistory] = useState(false)
   const [availableSlots, setAvailableSlots] = useState<AvailabilitySlot[]>([])
   const [availabilitySchedule, setAvailabilitySchedule] = useState<AvailabilitySchedule | null>(null)
+  const [slotMinutes, setSlotMinutes] = useState(DEFAULT_SLOT_MINUTES)
   const [reservationDetails, setReservationDetails] = useState<ReservationDetails | null>(null)
   const [reservationHistory, setReservationHistory] = useState<UserBookingHistoryItem[]>([])
   const [submitError, setSubmitError] = useState("")
@@ -274,6 +287,10 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
   const selectedSlot = useMemo(
     () => availableSlots.find((slot) => slot.time === formData.time) || null,
     [availableSlots, formData.time]
+  )
+  const selectedEndTime = useMemo(
+    () => (formData.time ? addMinutesToTime(formData.time, slotMinutes) : null),
+    [formData.time, slotMinutes]
   )
 
   const reviewDateFormatted = useMemo(
@@ -620,6 +637,7 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
       const data = await userApi.getAvailability(format(nextDate, "yyyy-MM-dd"), parseInt(guests, 10), slug)
       setAvailabilitySchedule(data.schedule)
       setAvailableSlots(data.slots.filter((slot) => slot.available))
+      setSlotMinutes(data.slotMinutes ?? DEFAULT_SLOT_MINUTES)
     } catch {
       setAvailableSlots([])
       setAvailabilitySchedule(null)
@@ -797,7 +815,10 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
           <div className="mb-8 w-full max-w-sm rounded-2xl border border-border bg-background p-4 text-left text-sm space-y-1">
             <div>Номер: #{reservationDetails.id}</div>
             <div>Дата: {reservationDetails.date}</div>
-            <div>Время: {reservationDetails.time}</div>
+            <div>
+              Время: {reservationDetails.time}
+              {reservationDetails.endTime ? ` — ${reservationDetails.endTime}` : ""}
+            </div>
             {reservationDetails.guests != null && (
               <div>Гостей: {reservationDetails.guests}</div>
             )}
@@ -1208,6 +1229,11 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
               <Label className="text-xs text-muted-foreground">
                 Время начала <span className="text-destructive">*</span>
               </Label>
+              {selectedEndTime && (
+                <span className="text-[10px] text-primary">
+                  Стол забронирован до {selectedEndTime}
+                </span>
+              )}
             </div>
             {!isReadyForTimeSelection ? (
               <div
@@ -1409,7 +1435,9 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
                   </div>
                   <div className="flex justify-between gap-4">
                     <dt className="text-muted-foreground">Время</dt>
-                    <dd className="text-right font-medium">{formData.time}</dd>
+                    <dd className="text-right font-medium">
+                      {selectedEndTime ? `${formData.time} — ${selectedEndTime}` : formData.time}
+                    </dd>
                   </div>
                   <div className="flex justify-between gap-4">
                     <dt className="text-muted-foreground">Гостей</dt>

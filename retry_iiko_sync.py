@@ -48,10 +48,10 @@ def _push_local_to_iiko(restaurant_id):
         WHERE restaurant_id = %s AND status = 'confirmed'
           AND iiko_reserve_id IS NULL
           AND (iiko_creation_status = 'Error' OR iiko_creation_status IS NULL)
-          AND reservation_time > NOW()
+          AND reservation_time > (timezone(%s, now()))::timestamp
         ORDER BY reservation_time
         """,
-        (restaurant_id,),
+        (restaurant_id, RESTAURANT_TZ),
     )
     if not rows:
         return 0
@@ -95,7 +95,7 @@ def _pull_iiko_to_local(restaurant_id):
     local_rows = query_all(
         """
         SELECT id, iiko_reserve_id::text AS iiko_reserve_id, status,
-               reservation_time, guests
+               reservation_time, guests, iiko_creation_status
         FROM reservations
         WHERE restaurant_id = %s AND iiko_reserve_id IS NOT NULL
         """,
@@ -134,10 +134,22 @@ def _pull_iiko_to_local(restaurant_id):
 
             # Cancelled locally but still active in iiko -> cancel in iiko
             elif local_status == "cancelled" and iiko_status not in ("Cancelled", "Deleted"):
+                if local.get("iiko_creation_status") == "CancelRejected":
+                    continue  # iiko permanently refused this cancel — don't retry every cycle
                 try:
                     iiko_service.cancel_reserve(restaurant_id, iiko_id, "Other")
                     logger.info("Cancelled iiko reserve %s (local reservation cancelled)", iiko_id)
                     stats["cancelled_iiko"] += 1
+                except iiko_service.IikoBadRequest as e:
+                    execute(
+                        """
+                        UPDATE reservations
+                        SET iiko_creation_status = 'CancelRejected', updated_at = NOW()
+                        WHERE id = %s
+                        """,
+                        (local["id"],),
+                    )
+                    logger.error("iiko rejected cancel of reserve %s (no auto-retry): %s", iiko_id, e)
                 except RuntimeError as e:
                     logger.error("Failed to cancel iiko reserve %s: %s", iiko_id, e)
 
@@ -468,13 +480,20 @@ def _sync_reserve_tables(restaurant_id, iiko_reserve, local):
 
 def sync_restaurant(restaurant_id):
     """Full bidirectional sync for one restaurant."""
-    if not iiko_service.is_terminal_alive(restaurant_id):
-        logger.info("Restaurant %s: iiko terminal offline, skipping sync", restaurant_id)
+    try:
+        if not iiko_service.is_terminal_alive(restaurant_id):
+            logger.info("Restaurant %s: iiko terminal offline, skipping sync", restaurant_id)
+            return False
+    except RuntimeError as e:
+        logger.error("Restaurant %s: iiko unavailable, skipping sync: %s", restaurant_id, e)
         return False
 
     logger.info("Restaurant %s: terminal alive, starting sync", restaurant_id)
     _push_local_to_iiko(restaurant_id)
-    _pull_iiko_to_local(restaurant_id)
+    try:
+        _pull_iiko_to_local(restaurant_id)
+    except RuntimeError as e:
+        logger.error("Restaurant %s: iiko->local pull failed: %s", restaurant_id, e)
     return True
 
 

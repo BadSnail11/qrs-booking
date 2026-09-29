@@ -968,18 +968,24 @@ def iiko_status():
     config = iiko_service._get_restaurant_iiko_config(rid)
     if not config:
         return jsonify({"configured": False, "terminal_alive": False})
-    alive = iiko_service.is_terminal_alive(rid)
+    alive = False
+    error = None
+    try:
+        alive = iiko_service.is_terminal_alive(rid)
+    except Exception as exc:
+        error = str(exc)
     failed_count = query_all(
         """
         SELECT count(*) AS cnt FROM reservations
         WHERE restaurant_id = %s AND status = 'confirmed'
-          AND iiko_creation_status = 'Error' AND iiko_reserve_id IS NULL
+          AND iiko_creation_status IN ('Error', 'Rejected') AND iiko_reserve_id IS NULL
         """,
         (rid,),
     )
     return jsonify({
         "configured": True,
         "terminal_alive": alive,
+        "error": error,
         "failed_sync_count": failed_count[0]["cnt"] if failed_count else 0,
     })
 
@@ -987,17 +993,17 @@ def iiko_status():
 @app.post("/api/v1/iiko/retry-failed")
 def iiko_retry_failed():
     rid = get_restaurant_id()
-    from booking_service import _sync_reservation_to_iiko
+    from booking_service import RESTAURANT_TZ, _sync_reservation_to_iiko
     rows = query_all(
         """
         SELECT id FROM reservations
         WHERE restaurant_id = %s AND status = 'confirmed'
           AND iiko_reserve_id IS NULL
-          AND (iiko_creation_status = 'Error' OR iiko_creation_status IS NULL)
-          AND reservation_time > NOW()
+          AND (iiko_creation_status IN ('Error', 'Rejected') OR iiko_creation_status IS NULL)
+          AND reservation_time > (timezone(%s, now()))::timestamp
         ORDER BY reservation_time
         """,
-        (rid,),
+        (rid, RESTAURANT_TZ),
     )
     retried = 0
     for row in rows:
