@@ -21,16 +21,18 @@ def _message_for_event(event_type, reservation):
     rid = reservation.get("id")
     date = reservation.get("date")
     time = reservation.get("time")
+    end_time = reservation.get("endTime")
+    time_range = f"{time}-{end_time}" if end_time else time
     guests = reservation.get("guests")
     sets = format_sets_display(reservation.get("sets"))
     if event_type == "confirmed":
         return (
-            f"Бронь #{rid} подтверждена. {date} {time}, гостей: {guests}, "
+            f"Бронь #{rid} подтверждена. {date} {time_range}, гостей: {guests}, "
             f"сеты: {sets}."
         )
     if event_type == "edited":
         return (
-            f"Бронь #{rid} изменена. Новые данные: {date} {time}, гостей: {guests}, "
+            f"Бронь #{rid} изменена. Новые данные: {date} {time_range}, гостей: {guests}, "
             f"сеты: {sets}."
         )
     if event_type == "cancelled":
