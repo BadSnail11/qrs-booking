@@ -145,6 +145,9 @@ export function AdminSettingsPageClient({
       setIikoConfigured(data.configured)
       setIikoTerminalAlive(data.terminal_alive)
       setIikoFailedCount(data.failed_sync_count)
+      if (data.error) {
+        setIikoError(`Ошибка подключения к iiko: ${data.error}`)
+      }
     } catch (e) {
       setIikoError(e instanceof Error ? e.message : "Ошибка загрузки статуса iiko")
     } finally {

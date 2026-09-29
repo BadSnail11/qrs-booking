@@ -12,6 +12,15 @@ logger = logging.getLogger(__name__)
 
 IIKO_API_BASE = "https://api-ru.iiko.services"
 
+
+class IikoBadRequest(RuntimeError):
+    """Permanent client error (HTTP 400): the same request will never succeed.
+
+    Callers must NOT auto-retry these — iiko auto-blocks the apiLogin when >20%
+    of reserve/create requests return 400 within 24h. Auth/5xx problems stay
+    plain RuntimeError (transient: retrying them is fine).
+    """
+
 # In-memory token cache: {api_login: (token, expires_at)}
 _token_cache: dict[str, tuple[str, float]] = {}
 
@@ -27,8 +36,17 @@ def _get_token(api_login: str) -> str:
         if time.time() < expires_at - 60:  # refresh 1 min early
             return token
 
-    data = _api_post("/api/1/access_token", {"apiLogin": api_login}, auth=False)
-    token = data["token"]
+    try:
+        data = _api_post("/api/1/access_token", {"apiLogin": api_login}, auth=False)
+    except IikoBadRequest as e:
+        # Auth failures (e.g. blocked apiLogin) affect the whole login, not one
+        # request — never mark individual reservations as rejected because of them.
+        raise RuntimeError(str(e)) from e
+    token = data.get("token")
+    if not token:
+        error_desc = data.get("errorDescription") or str(data)
+        logger.error("iiko auth failed for apiLogin %s...: %s", api_login[:6], error_desc)
+        raise RuntimeError(f"iiko auth failed: {error_desc}")
     _token_cache[api_login] = (token, time.time() + 3500)  # ~58 min
     return token
 
@@ -67,11 +85,16 @@ def _api_post(path: str, body: dict, auth: bool = True, token: str | None = None
         data = resp.json()
     except (json.JSONDecodeError, ValueError):
         if not resp.ok:
+            if resp.status_code == 400:
+                raise IikoBadRequest(f"iiko API {path} error 400: {resp.text}")
             raise RuntimeError(f"iiko API error {resp.status_code}: {resp.text}")
         return {}
 
     if not resp.ok:
         logger.error("iiko API %s returned %s: %s", path, resp.status_code, data)
+        if resp.status_code == 400:
+            error_desc = data.get("errorDescription") or str(data)
+            raise IikoBadRequest(f"iiko API {path} error 400: {error_desc}")
 
     return data
 

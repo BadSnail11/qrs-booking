@@ -90,6 +90,7 @@ export const userApi = {
     return userRequest<{
       date: string
       guests: number
+      slotMinutes?: number
       schedule: { weekday: number; dayName: string; isOpen: boolean; openTime: string | null; closeTime: string | null }
       slots: Array<{
         time: string
@@ -406,7 +407,7 @@ export const adminApi = {
     })
   },
   getIikoStatus() {
-    return request<{ configured: boolean; terminal_alive: boolean; failed_sync_count: number }>(
+    return request<{ configured: boolean; terminal_alive: boolean; error?: string | null; failed_sync_count: number }>(
       ADMIN_API_URL, "/v1/iiko/status"
     )
   },

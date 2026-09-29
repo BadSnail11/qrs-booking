@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from openpyxl import Workbook
 from db import execute, execute_returning, query_all, query_one
+from phone_utils import normalize_phone
 from request_context import get_restaurant_id
 import iiko_service
 
@@ -211,16 +212,19 @@ def _sync_reservation_to_iiko(reservation_id, restaurant_id):
     if isinstance(rt, str):
         rt = parse_iso_dt(rt)
     estimated_start = rt.strftime("%Y-%m-%dT%H:%M:%S.000")
+    # iiko accepts only "+" followed by digits — raw DB values may have spaces/dashes
+    phone_digits = normalize_phone(row["phone"] or "")
+    iiko_phone = f"+{phone_digits}" if phone_digits else "+000000000"
     try:
         info = iiko_service.create_reserve(
             restaurant_id=restaurant_id,
             customer_name=first_name,
             customer_surname=last_name or None,
-            phone=row["phone"] or "+000000000",
+            phone=iiko_phone,
             guests_count=row["guests"],
             table_ids=table_ids,
             estimated_start_time=estimated_start,
-            duration_minutes=row["duration_minutes"],
+            duration_minutes=row["duration_minutes"] or SLOT_MINUTES,
             comment=row["note"] or "",
         )
         execute(
@@ -234,6 +238,19 @@ def _sync_reservation_to_iiko(reservation_id, restaurant_id):
             (info["id"], info.get("creationStatus", "InProgress"), reservation_id),
         )
         logger.info("Reservation %s synced to iiko: %s", reservation_id, info["id"])
+    except iiko_service.IikoBadRequest as e:
+        # Permanent rejection — retrying the same payload floods iiko with 400s
+        # and gets the apiLogin auto-blocked. 'Rejected' is excluded from auto-retry.
+        execute(
+            """
+            UPDATE reservations
+            SET iiko_creation_status = 'Rejected',
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            (reservation_id,),
+        )
+        logger.error("iiko rejected reservation %s (no auto-retry): %s", reservation_id, e)
     except RuntimeError as e:
         execute(
             """
