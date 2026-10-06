@@ -1,16 +1,84 @@
 """iiko Cloud API client for reserve management."""
 
 import logging
+import os
 import time
 import json
 
 import requests
 
-from db import query_one, query_all
+from db import execute, query_one, query_all
 
 logger = logging.getLogger(__name__)
 
 IIKO_API_BASE = "https://api-ru.iiko.services"
+
+RESERVE_CREATE_PATH = "/api/1/reserve/create"
+# iiko auto-blocks the apiLogin above 20% of 400s on reserve/create per 24h;
+# keep a margin below it
+CREATE_MAX_ERROR_RATIO = float(os.getenv("IIKO_CREATE_MAX_ERROR_RATIO", "0.15"))
+
+_request_log_ready = False
+
+
+class IikoCreatePaused(RuntimeError):
+    """reserve/create withheld locally: one more 400 could cross iiko's block threshold.
+
+    Transient — the reservation stays 'Error' and the sync worker retries it once
+    old failures age out of the 24h window.
+    """
+
+
+def _ensure_request_log():
+    global _request_log_ready
+    if _request_log_ready:
+        return
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS iiko_request_log (
+            id BIGSERIAL PRIMARY KEY,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            path TEXT NOT NULL,
+            status_code INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_iiko_request_log_path_created
+            ON iiko_request_log (path, created_at);
+        """
+    )
+    _request_log_ready = True
+
+
+def _log_request(path: str, status_code: int) -> None:
+    try:
+        _ensure_request_log()
+        execute(
+            "INSERT INTO iiko_request_log (path, status_code) VALUES (%s, %s)",
+            (path, status_code),
+        )
+    except Exception as e:
+        logger.error("Failed to record iiko request log: %s", e)
+
+
+def create_request_stats_24h() -> dict:
+    """reserve/create totals for the last 24h, as iiko counts them for auto-block."""
+    _ensure_request_log()
+    row = query_one(
+        """
+        SELECT COUNT(*) AS total,
+               COUNT(*) FILTER (WHERE status_code = 400) AS bad_requests
+        FROM iiko_request_log
+        WHERE path = %s AND created_at > NOW() - INTERVAL '24 hours'
+        """,
+        (RESERVE_CREATE_PATH,),
+    )
+    total = int(row["total"]) if row else 0
+    bad = int(row["bad_requests"]) if row else 0
+    return {
+        "total": total,
+        "bad_requests": bad,
+        # Worst case: the next request fails too
+        "paused": bad > 0 and (bad + 1) / (total + 1) > CREATE_MAX_ERROR_RATIO,
+    }
 
 
 class IikoBadRequest(RuntimeError):
@@ -80,6 +148,9 @@ def _api_post(path: str, body: dict, auth: bool = True, token: str | None = None
     except requests.RequestException as e:
         logger.error("iiko API %s connection error: %s", path, e)
         raise RuntimeError(f"iiko API connection error: {e}") from e
+
+    if path == RESERVE_CREATE_PATH:
+        _log_request(path, resp.status_code)
 
     try:
         data = resp.json()
@@ -211,7 +282,22 @@ def create_reserve(
     if not iiko_table_ids:
         raise RuntimeError("No iiko table mapping found for the selected tables")
 
-    data = _authed_post(config["iiko_api_login"], "/api/1/reserve/create", {
+    try:
+        stats = create_request_stats_24h()
+    except Exception as e:
+        logger.error("iiko request stats unavailable, not sending reserve/create: %s", e)
+        raise RuntimeError(f"iiko request stats unavailable: {e}") from e
+    if stats["paused"]:
+        logger.warning(
+            "iiko reserve/create paused: %s of %s requests in 24h returned 400",
+            stats["bad_requests"], stats["total"],
+        )
+        raise IikoCreatePaused(
+            f"sending to iiko paused: {stats['bad_requests']} of {stats['total']} "
+            "reserve/create requests in the last 24h were rejected"
+        )
+
+    data = _authed_post(config["iiko_api_login"], RESERVE_CREATE_PATH, {
         "organizationId": config["iiko_organization_id"],
         "terminalGroupId": config["iiko_terminal_group_id"],
         "customer": {

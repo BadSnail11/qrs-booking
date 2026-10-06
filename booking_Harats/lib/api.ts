@@ -407,7 +407,13 @@ export const adminApi = {
     })
   },
   getIikoStatus() {
-    return request<{ configured: boolean; terminal_alive: boolean; error?: string | null; failed_sync_count: number }>(
+    return request<{
+      configured: boolean
+      terminal_alive: boolean
+      error?: string | null
+      create_stats?: { total: number; bad_requests: number; paused: boolean } | null
+      failed_sync_count: number
+    }>(
       ADMIN_API_URL, "/v1/iiko/status"
     )
   },

@@ -131,6 +131,9 @@ export function AdminSettingsPageClient({
   const [iikoConfigured, setIikoConfigured] = useState(false)
   const [iikoTerminalAlive, setIikoTerminalAlive] = useState(false)
   const [iikoFailedCount, setIikoFailedCount] = useState(0)
+  const [iikoCreateStats, setIikoCreateStats] = useState<
+    { total: number; bad_requests: number; paused: boolean } | null
+  >(null)
   const [iikoLoading, setIikoLoading] = useState(false)
   const [iikoSyncing, setIikoSyncing] = useState(false)
   const [iikoRetrying, setIikoRetrying] = useState(false)
@@ -145,6 +148,7 @@ export function AdminSettingsPageClient({
       setIikoConfigured(data.configured)
       setIikoTerminalAlive(data.terminal_alive)
       setIikoFailedCount(data.failed_sync_count)
+      setIikoCreateStats(data.create_stats ?? null)
       if (data.error) {
         setIikoError(`Ошибка подключения к iiko: ${data.error}`)
       }
@@ -1321,7 +1325,30 @@ export function AdminSettingsPageClient({
                       <span className="text-sm text-muted-foreground">Нет</span>
                     )}
                   </div>
+                  {iikoCreateStats && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium w-40">Отказы iiko за 24 ч:</span>
+                      <span
+                        className={
+                          iikoCreateStats.bad_requests > 0
+                            ? "text-sm font-medium text-yellow-700"
+                            : "text-sm text-muted-foreground"
+                        }
+                      >
+                        {iikoCreateStats.bad_requests} из {iikoCreateStats.total}
+                      </span>
+                    </div>
+                  )}
                 </div>
+
+                {iikoCreateStats?.paused && (
+                  <div className="rounded-md border border-yellow-500/50 bg-yellow-50 p-3 text-sm text-yellow-800">
+                    Отправка новых броней в iiko временно приостановлена: за последние сутки iiko отклонил
+                    слишком много запросов, и ещё один отказ может привести к автоматической блокировке
+                    интеграции. Брони сохраняются у нас и будут отправлены автоматически, когда старые
+                    отказы выйдут из 24-часового окна.
+                  </div>
+                )}
 
                 {iikoConfigured && (
                   <div className="flex gap-3">
