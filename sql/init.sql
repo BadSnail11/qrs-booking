@@ -224,6 +224,17 @@ CREATE TABLE IF NOT EXISTS reservation_sms_notifications (
     UNIQUE(reservation_id, event_type, scheduled_for)
 );
 
+-- ── iiko request log (auto-block guard) ─────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS iiko_request_log (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    path TEXT NOT NULL,
+    status_code INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_iiko_request_log_path_created
+    ON iiko_request_log (path, created_at);
+
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- SEED DATA

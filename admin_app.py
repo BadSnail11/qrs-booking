@@ -974,6 +974,11 @@ def iiko_status():
         alive = iiko_service.is_terminal_alive(rid)
     except Exception as exc:
         error = str(exc)
+    try:
+        create_stats = iiko_service.create_request_stats_24h()
+    except Exception as exc:
+        create_stats = None
+        error = error or str(exc)
     failed_count = query_all(
         """
         SELECT count(*) AS cnt FROM reservations
@@ -986,6 +991,7 @@ def iiko_status():
         "configured": True,
         "terminal_alive": alive,
         "error": error,
+        "create_stats": create_stats,
         "failed_sync_count": failed_count[0]["cnt"] if failed_count else 0,
     })
 

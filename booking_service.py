@@ -22,6 +22,7 @@ OPEN_HOUR = int(os.getenv("OPEN_HOUR", "11"))
 CLOSE_HOUR = int(os.getenv("CLOSE_HOUR", "22"))
 MAX_COMBINED_TABLES = int(os.getenv("MAX_COMBINED_TABLES", "3"))
 MAX_EXTRA_SEATS = int(os.getenv("MAX_EXTRA_SEATS", "2"))
+IIKO_MIN_LEAD_MINUTES = int(os.getenv("IIKO_MIN_LEAD_MINUTES", "2"))
 MAX_PARTY_SIZE = 15
 MAX_SETS = 15
 logger = logging.getLogger(__name__)
@@ -188,7 +189,7 @@ def _sync_reservation_to_iiko(reservation_id, restaurant_id):
     """Push a local reservation to iiko. Updates iiko columns on success or failure."""
     row = query_one(
         """
-        SELECT r.id, r.customer_name, r.phone, r.guests, r.note,
+        SELECT r.id, r.customer_name, r.phone, r.guests, r.note, r.status,
                r.reservation_time, r.duration_minutes, r.restaurant_id,
                string_agg(rt.table_id::text, ',') AS table_ids
         FROM reservations r
@@ -199,6 +200,8 @@ def _sync_reservation_to_iiko(reservation_id, restaurant_id):
         (reservation_id, restaurant_id),
     )
     if not row:
+        return
+    if row["status"] != "confirmed":
         return
     first_name, last_name = split_customer_name(row["customer_name"])
     table_ids = [int(x) for x in row["table_ids"].split(",")] if row.get("table_ids") else []
@@ -211,6 +214,16 @@ def _sync_reservation_to_iiko(reservation_id, restaurant_id):
     rt = row["reservation_time"]
     if isinstance(rt, str):
         rt = parse_iso_dt(rt)
+    if rt.tzinfo is not None:
+        rt = rt.astimezone(restaurant_tz()).replace(tzinfo=None)
+    # iiko answers 400 for a start time that is not in the future; every such 400
+    # counts toward the >20% auto-block threshold
+    if rt <= restaurant_now() + timedelta(minutes=IIKO_MIN_LEAD_MINUTES):
+        logger.info(
+            "Reservation %s starts at %s (already started or too soon), not sending to iiko",
+            reservation_id, rt,
+        )
+        return
     estimated_start = rt.strftime("%Y-%m-%dT%H:%M:%S.000")
     # iiko accepts only "+" followed by digits — raw DB values may have spaces/dashes
     phone_digits = normalize_phone(row["phone"] or "")
@@ -218,7 +231,7 @@ def _sync_reservation_to_iiko(reservation_id, restaurant_id):
     try:
         info = iiko_service.create_reserve(
             restaurant_id=restaurant_id,
-            customer_name=first_name,
+            customer_name=first_name or "Гость",
             customer_surname=last_name or None,
             phone=iiko_phone,
             guests_count=row["guests"],
@@ -265,18 +278,67 @@ def _sync_reservation_to_iiko(reservation_id, restaurant_id):
 
 
 def _cancel_iiko_reserve(reservation_id, restaurant_id):
-    """Cancel the linked iiko reserve if one exists."""
+    """Cancel the linked iiko reserve if one exists.
+
+    Returns True if nothing was linked or the cancel succeeded, False if it failed.
+    """
     row = query_one(
         "SELECT iiko_reserve_id::text FROM reservations WHERE id = %s AND restaurant_id = %s",
         (reservation_id, restaurant_id),
     )
     if not row or not row.get("iiko_reserve_id"):
-        return
+        return True
     try:
         iiko_service.cancel_reserve(restaurant_id, row["iiko_reserve_id"], "Other")
         logger.info("Cancelled iiko reserve %s for reservation %s", row["iiko_reserve_id"], reservation_id)
+        return True
     except RuntimeError as e:
         logger.error("Failed to cancel iiko reserve for reservation %s: %s", reservation_id, e)
+        return False
+
+
+def _resync_updated_reservation_to_iiko(reservation_id, restaurant_id, old, new_table_ids):
+    """Replace the iiko reserve after an edit, touching iiko only when it matters."""
+    old_time = parse_iso_dt(old["reservation_time"])
+    if old_time.tzinfo is not None:
+        old_time = old_time.astimezone(restaurant_tz()).replace(tzinfo=None)
+    if old.get("iiko_reserve_id") and old_time <= restaurant_now():
+        # Guest is already seated: don't cancel/recreate their reserve at the POS
+        return
+
+    row = query_one(
+        """
+        SELECT customer_name, phone, guests, note, reservation_time
+        FROM reservations WHERE id = %s AND restaurant_id = %s
+        """,
+        (reservation_id, restaurant_id),
+    )
+    if not row:
+        return
+    old_table_ids = sorted(int(t) for t in (old.get("table_ids") or []))
+    changed = (
+        (row["customer_name"] or "") != (old.get("customer_name") or "")
+        or (row["phone"] or "") != (old.get("phone") or "")
+        or row["guests"] != old.get("guests")
+        or (row["note"] or "") != (old.get("note") or "")
+        or row["reservation_time"] != parse_iso_dt(old["reservation_time"]).replace(tzinfo=None)
+        or sorted(int(t) for t in new_table_ids) != old_table_ids
+    )
+    if not changed and old.get("iiko_reserve_id"):
+        return
+
+    if not _cancel_iiko_reserve(reservation_id, restaurant_id):
+        # Old reserve may still hold the table in iiko — creating now would collide
+        return
+    execute(
+        """
+        UPDATE reservations
+        SET iiko_reserve_id = NULL, iiko_creation_status = NULL, updated_at = NOW()
+        WHERE id = %s AND restaurant_id = %s
+        """,
+        (reservation_id, restaurant_id),
+    )
+    _sync_reservation_to_iiko(reservation_id, restaurant_id)
 
 
 def reservation_window(reservation_time):
@@ -1253,10 +1315,9 @@ def update_reservation(
             (reservation_id, table_id),
         )
 
-    # Sync to iiko: cancel old reserve and create new one with updated details
     rid = get_restaurant_id()
-    _cancel_iiko_reserve(reservation_id, rid)
-    _sync_reservation_to_iiko(reservation_id, rid)
+    if current["status"] == "confirmed":
+        _resync_updated_reservation_to_iiko(reservation_id, rid, current, new_table_ids)
 
     return get_reservation(reservation_id, restaurant_id=rid)
 

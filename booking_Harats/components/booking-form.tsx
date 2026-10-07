@@ -56,6 +56,8 @@ import {
 const USER_BOOKING_DRAFT_KEY = "qrs-user-booking-draft"
 const OFFER_PDF_URL = "/oferta_mise_v3.pdf"
 const OFFER_DOCUMENT_ID = "oferta_mise_v3.pdf"
+const CONSENT_PDF_URL = "/soglasie_na_obrabotku.pdf"
+const CONSENT_DOCUMENT_ID = "soglasie_na_obrabotku.pdf"
 const USER_BOOKING_HISTORY_COOKIE = "qrs-user-booking-history"
 const USER_BOOKING_HISTORY_LIMIT = 10
 
@@ -678,7 +680,7 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
       }
       reservationBody.offerAccepted = true
       reservationBody.marketingConsent = marketingConsent
-      reservationBody.offerDocument = OFFER_DOCUMENT_ID
+      reservationBody.offerDocument = `${OFFER_DOCUMENT_ID}, ${CONSENT_DOCUMENT_ID}`
       const result = await userApi.createReservation(reservationBody)
 
       const reservation = result.reservation as ReservationDetails & {
@@ -1365,8 +1367,18 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
                 >
                   Публичной оферты
                 </a>{" "}
-                сервиса Mise и даю согласие на обработку моих персональных данных (имени, фамилии и
-                номера телефона) ООО «Найтколл» и ООО «ХАРАТСБЕЛ» в целях бронирования столика.
+                сервиса Mise и даю{" "}
+                <a
+                  href={CONSENT_PDF_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-primary underline underline-offset-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  согласие на обработку моих персональных данных
+                </a>{" "}
+                (имени, фамилии и номера телефона) ООО «Найтколл» и ООО «ХАРАТСБЕЛ» в целях
+                бронирования столика.
               </Label>
             </div>
             {fieldErrors.offerAccepted && (
