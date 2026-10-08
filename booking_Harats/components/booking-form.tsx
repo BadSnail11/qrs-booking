@@ -56,8 +56,8 @@ import {
 const USER_BOOKING_DRAFT_KEY = "qrs-user-booking-draft"
 const OFFER_PDF_URL = "/oferta_mise_v3.pdf"
 const OFFER_DOCUMENT_ID = "oferta_mise_v3.pdf"
-const CONSENT_PDF_URL = "/soglasie_na_obrabotku.pdf"
-const CONSENT_DOCUMENT_ID = "soglasie_na_obrabotku.pdf"
+const CONSENT_PDF_URL = "/soglasie_na_obrabotku_harats.pdf"
+const CONSENT_DOCUMENT_ID = "soglasie_na_obrabotku_harats.pdf"
 const USER_BOOKING_HISTORY_COOKIE = "qrs-user-booking-history"
 const USER_BOOKING_HISTORY_LIMIT = 10
 
@@ -157,6 +157,7 @@ type FieldKey =
   | "date"
   | "time"
   | "offerAccepted"
+  | "consentAccepted"
 
 type SlugStatus = "loading" | "ok" | "invalid" | "error"
 
@@ -238,6 +239,7 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
   const [isCheckingPhone, setIsCheckingPhone] = useState(false)
   const [nameInputsLocked, setNameInputsLocked] = useState(false)
   const [acceptedOffer, setAcceptedOffer] = useState(false)
+  const [acceptedConsent, setAcceptedConsent] = useState(false)
   const [marketingConsent, setMarketingConsent] = useState(false)
 
   const dateValue = useMemo(() => (date ? format(date, "yyyy-MM-dd") : ""), [date])
@@ -529,8 +531,10 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
     if (!date) e.date = "Выберите дату."
     if (!formData.time) e.time = "Выберите время бронирования."
     if (!acceptedOffer) {
-      e.offerAccepted =
-        "Примите условия публичной оферты и дайте согласие на обработку персональных данных."
+      e.offerAccepted = "Примите условия публичной оферты."
+    }
+    if (!acceptedConsent) {
+      e.consentAccepted = "Без согласия на обработку персональных данных онлайн-бронирование невозможно."
     }
     return e
   }
@@ -728,6 +732,7 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
       setAvailabilitySchedule(null)
       resetPhoneVerification()
       setAcceptedOffer(false)
+      setAcceptedConsent(false)
       setMarketingConsent(false)
     } catch (error) {
       if (error instanceof TypeError) {
@@ -1355,7 +1360,8 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
                 aria-invalid={Boolean(fieldErrors.offerAccepted)}
                 className="mt-0.5"
               />
-              <Label htmlFor="offer-accepted" className="cursor-pointer text-sm font-normal leading-snug">
+              {/* Label is flex by default — that splits inline text and links into columns */}
+              <Label htmlFor="offer-accepted" className="block min-w-0 cursor-pointer text-sm font-normal leading-snug">
                 <span className="text-destructive">*</span>{" "}
                 Я принимаю условия{" "}
                 <a
@@ -1367,7 +1373,32 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
                 >
                   Публичной оферты
                 </a>{" "}
-                сервиса Mise и даю{" "}
+                сервиса Mise.
+              </Label>
+            </div>
+            {fieldErrors.offerAccepted && (
+              <p className="text-xs text-destructive">{fieldErrors.offerAccepted}</p>
+            )}
+            <div className="flex gap-3">
+              <Checkbox
+                id="consent-accepted"
+                checked={acceptedConsent}
+                onCheckedChange={(checked) => {
+                  setAcceptedConsent(checked === true)
+                  if (checked === true) {
+                    setFieldErrors((prev) => {
+                      const next = { ...prev }
+                      delete next.consentAccepted
+                      return next
+                    })
+                  }
+                }}
+                aria-invalid={Boolean(fieldErrors.consentAccepted)}
+                className="mt-0.5"
+              />
+              <Label htmlFor="consent-accepted" className="block min-w-0 cursor-pointer text-sm font-normal leading-snug">
+                <span className="text-destructive">*</span>{" "}
+                Даю{" "}
                 <a
                   href={CONSENT_PDF_URL}
                   target="_blank"
@@ -1375,14 +1406,13 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
                   className="font-medium text-primary underline underline-offset-2"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  согласие на обработку моих персональных данных
+                  согласие на обработку персональных данных
                 </a>{" "}
-                (имени, фамилии и номера телефона) ООО «Найтколл» и ООО «ХАРАТСБЕЛ» в целях
-                бронирования столика.
+                для бронирования.
               </Label>
             </div>
-            {fieldErrors.offerAccepted && (
-              <p className="text-xs text-destructive">{fieldErrors.offerAccepted}</p>
+            {fieldErrors.consentAccepted && (
+              <p className="text-xs text-destructive">{fieldErrors.consentAccepted}</p>
             )}
             <div className="flex gap-3">
               <Checkbox
@@ -1391,9 +1421,18 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
                 onCheckedChange={(checked) => setMarketingConsent(checked === true)}
                 className="mt-0.5"
               />
-              <Label htmlFor="marketing-consent" className="cursor-pointer text-sm font-normal leading-snug">
-                Я даю согласие на получение информационных и рекламных сообщений от сервиса Mise и
-                заведения Harats Irish Pub Grodno.
+              <Label htmlFor="marketing-consent" className="block min-w-0 cursor-pointer text-sm font-normal leading-snug">
+                Хочу получать информацию об{" "}
+                <a
+                  href={CONSENT_PDF_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-primary underline underline-offset-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  акциях и мероприятиях Harat&apos;s
+                </a>
+                .
               </Label>
             </div>
           </div>
