@@ -30,6 +30,8 @@ from booking_service import (
     parse_iso_dt,
     reservations_analytics,
     restore_cancelled_reservation,
+    reservation_end,
+    is_open_ended,
     serialize_table,
     serialize_table_block,
     list_weekly_schedule,
@@ -840,12 +842,15 @@ def check_table():
             table_ids,
             int(body["guests"]),
             reservation_time,
-            exclude_reservation_id=body.get("exclude_reservation_id"),
+            exclude_reservation_id=body.get("exclude_reservation_id") or body.get("reservation_id"),
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
     conflict = issues["conflict"]
+    conflict_end = (
+        reservation_end(conflict["reservation_time"], conflict.get("duration_minutes")) if conflict else None
+    )
     return jsonify(
         {
             "ok": not (issues["capacity_issue"] or issues["conflict"] or issues["block"]),
@@ -856,6 +861,9 @@ def check_table():
                 "customer_name": conflict["customer_name"],
                 "phone": conflict["phone"],
                 "reservation_time": conflict["reservation_time"].isoformat(),
+                "time": conflict["reservation_time"].strftime("%H:%M"),
+                "endTime": conflict_end.strftime("%H:%M"),
+                "openEnded": is_open_ended(conflict["reservation_time"]),
             }
             if conflict
             else None,
@@ -879,7 +887,10 @@ def cancel(reservation_id):
 
 @app.post("/api/v1/reservations/<int:reservation_id>/restore")
 def restore(reservation_id):
-    row = restore_cancelled_reservation(reservation_id)
+    try:
+        row = restore_cancelled_reservation(reservation_id)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 409
     if not row:
         return jsonify({"error": "Cancelled reservation not found"}), 404
     reservation = get_reservation(reservation_id, restaurant_id=get_restaurant_id())

@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { adminApi } from "@/lib/api"
 import { formatSetsLabel } from "@/lib/booking-limits"
 import { cn } from "@/lib/utils"
+import { formatTimeRange } from "@/lib/booking-time"
 
 export type Booking = {
   id: string
@@ -29,6 +30,7 @@ export type Booking = {
   time: string
   endDate?: string
   endTime: string
+  openEnded?: boolean
   reservation_time?: string
   tableId: number
   table_ids?: number[]
@@ -493,7 +495,7 @@ export default function AdminPage() {
                             </div>
                           </div>
                           <div className="mt-1 text-sm text-muted-foreground">
-                            {booking.date} • {booking.time} - {booking.endTime}
+                            {booking.date} • {formatTimeRange(booking, " - ")}
                           </div>
                           <div className="mt-1 text-sm text-muted-foreground">
                             {getTableLabel(booking)} • {booking.guests} гостей • {formatSetsLabel(booking.sets)}

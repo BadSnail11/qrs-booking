@@ -4,6 +4,7 @@ import { Users, MessageSquare, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { Booking } from "@/app/admin/page"
 import { ReservationStatusBadge } from "@/components/admin/reservation-status-badge"
+import { formatTimeRange } from "@/lib/booking-time"
 
 interface AdminSidebarProps {
   pendingBookings: Booking[]
@@ -126,7 +127,7 @@ export function AdminSidebar({
                         </div>
                         <div className="text-sm text-muted-foreground">
                           {showBookingDate && <span className="font-medium text-foreground/80">{booking.date} · </span>}
-                          {booking.time}-{booking.endTime}
+                          {formatTimeRange(booking)}
                         </div>
                         {getTableLabel(booking) && (
                           <div className="text-xs text-muted-foreground">{getTableLabel(booking)}</div>
@@ -171,7 +172,7 @@ export function AdminSidebar({
                           </div>
                           <div className="text-sm text-muted-foreground">
                             {showBookingDate && <span className="font-medium text-foreground/80">{booking.date} · </span>}
-                            {booking.time}-{booking.endTime}
+                            {formatTimeRange(booking)}
                           </div>
                           {getTableLabel(booking) && (
                             <div className="text-xs text-muted-foreground">{getTableLabel(booking)}</div>
@@ -206,7 +207,7 @@ export function AdminSidebar({
                       </div>
                       <div className="text-sm text-muted-foreground">
                         {showBookingDate && <span className="font-medium text-foreground/80">{booking.date} · </span>}
-                        {booking.time}-{booking.endTime}
+                        {formatTimeRange(booking)}
                       </div>
                       {getTableLabel(booking) && (
                         <div className="text-xs text-muted-foreground">{getTableLabel(booking)}</div>

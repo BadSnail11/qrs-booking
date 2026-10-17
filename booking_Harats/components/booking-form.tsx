@@ -37,6 +37,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
+import { isOpenEndedTime, OPEN_ENDED_FROM } from "@/lib/booking-time"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { CalendarIcon, Check, Users, User, Phone, UtensilsCrossed, Timer, AlertTriangle, History, ShieldCheck } from "lucide-react"
@@ -66,6 +67,7 @@ type ReservationDetails = {
   date: string
   time: string
   endTime?: string
+  openEnded?: boolean
   status?: "confirmed" | "pending" | "cancelled"
   guests?: number
   sets?: number
@@ -215,6 +217,7 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
   const [availableSlots, setAvailableSlots] = useState<AvailabilitySlot[]>([])
   const [availabilitySchedule, setAvailabilitySchedule] = useState<AvailabilitySchedule | null>(null)
   const [slotMinutes, setSlotMinutes] = useState(DEFAULT_SLOT_MINUTES)
+  const [openEndedFrom, setOpenEndedFrom] = useState(OPEN_ENDED_FROM)
   const [reservationDetails, setReservationDetails] = useState<ReservationDetails | null>(null)
   const [reservationHistory, setReservationHistory] = useState<UserBookingHistoryItem[]>([])
   const [submitError, setSubmitError] = useState("")
@@ -292,6 +295,7 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
     () => availableSlots.find((slot) => slot.time === formData.time) || null,
     [availableSlots, formData.time]
   )
+  const selectedOpenEnded = Boolean(formData.time) && isOpenEndedTime(formData.time, openEndedFrom)
   const selectedEndTime = useMemo(
     () => (formData.time ? addMinutesToTime(formData.time, slotMinutes) : null),
     [formData.time, slotMinutes]
@@ -644,6 +648,7 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
       setAvailabilitySchedule(data.schedule)
       setAvailableSlots(data.slots.filter((slot) => slot.available))
       setSlotMinutes(data.slotMinutes ?? DEFAULT_SLOT_MINUTES)
+      setOpenEndedFrom(data.openEndedFrom ?? OPEN_ENDED_FROM)
     } catch {
       setAvailableSlots([])
       setAvailabilitySchedule(null)
@@ -824,7 +829,11 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
             <div>Дата: {reservationDetails.date}</div>
             <div>
               Время: {reservationDetails.time}
-              {reservationDetails.endTime ? ` — ${reservationDetails.endTime}` : ""}
+              {reservationDetails.openEnded
+                ? ", без ограничения по времени"
+                : reservationDetails.endTime
+                  ? ` — ${reservationDetails.endTime}`
+                  : ""}
             </div>
             {reservationDetails.guests != null && (
               <div>Гостей: {reservationDetails.guests}</div>
@@ -1236,7 +1245,9 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
               <Label className="text-xs text-muted-foreground">
                 Время начала <span className="text-destructive">*</span>
               </Label>
-              {selectedEndTime && (
+              {selectedOpenEnded ? (
+                <span className="text-[10px] text-primary">Без ограничения по времени</span>
+              ) : selectedEndTime && (
                 <span className="text-[10px] text-primary">
                   Стол забронирован до {selectedEndTime}
                 </span>
@@ -1487,7 +1498,11 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
                   <div className="flex justify-between gap-4">
                     <dt className="text-muted-foreground">Время</dt>
                     <dd className="text-right font-medium">
-                      {selectedEndTime ? `${formData.time} — ${selectedEndTime}` : formData.time}
+                      {selectedOpenEnded
+                        ? `${formData.time}, без ограничения по времени`
+                        : selectedEndTime
+                          ? `${formData.time} — ${selectedEndTime}`
+                          : formData.time}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-4">

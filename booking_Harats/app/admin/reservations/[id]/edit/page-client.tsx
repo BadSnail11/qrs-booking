@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
+import { formatTimeRange, overlapsNewSlot } from "@/lib/booking-time"
 import { adminSetSelectItems, partySizeOptions } from "@/lib/booking-limits"
 import { ReservationStatusBadge } from "@/components/admin/reservation-status-badge"
 import { ArrivalStatusBadge } from "@/components/admin/arrival-status-badge"
@@ -190,12 +191,6 @@ export function AdminEditReservationPageClient({
 
   const selectedOption = tableOptions.find((option) => option.key === formData.tableOptionKey)
 
-  const getEndTime = (startTime: string): string => {
-    const [hours, minutes] = startTime.split(":").map(Number)
-    const endHours = hours + 2
-    return `${String(endHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`
-  }
-
   const checkTableAvailability = async (tableIds: number[], optionLabel: string) => {
     if (!date || !formData.time || !formData.guests) return null
 
@@ -208,7 +203,14 @@ export function AdminEditReservationPageClient({
     }) as {
       ok: boolean
       capacity_issue: boolean
-      conflict: { customer_name: string; phone: string; reservation_time: string } | null
+      conflict: {
+        customer_name: string
+        phone: string
+        reservation_time: string
+        time?: string
+        endTime?: string
+        openEnded?: boolean
+      } | null
       block: { start_time: string; end_time: string; reason: string } | null
       unite_issue?: boolean
     }
@@ -229,8 +231,9 @@ export function AdminEditReservationPageClient({
           guests: parseInt(formData.guests, 10),
           sets: 1,
           date: dateValue,
-          time: formData.time,
-          endTime: getEndTime(formData.time),
+          time: result.conflict.time ?? formData.time,
+          endTime: result.conflict.endTime ?? "",
+          openEnded: result.conflict.openEnded,
           tableId: tableIds[0],
           status: "confirmed",
           color: "bg-red-100 border-l-red-400",
@@ -273,11 +276,7 @@ export function AdminEditReservationPageClient({
       if (item.id === booking?.id || item.status === "cancelled" || item.date !== dateValue) return false
       const bookingTableIds = item.table_ids && item.table_ids.length > 0 ? item.table_ids : [item.tableId]
       if (!bookingTableIds.some((id) => option.tableIds.includes(id))) return false
-      const bookingStart = item.time
-      const bookingEnd = item.endTime
-      const newStart = formData.time
-      const newEnd = getEndTime(formData.time)
-      return newStart < bookingEnd && newEnd > bookingStart
+      return overlapsNewSlot(item, dateValue, formData.time)
     })
 
     if (conflict) return "booked"
@@ -702,7 +701,7 @@ export function AdminEditReservationPageClient({
                 <div className="mt-2 rounded-lg bg-muted p-3 text-sm">
                   <div className="font-medium">Существующая бронь:</div>
                   <div>{conflictingBooking.firstName} {conflictingBooking.lastName}</div>
-                  <div>{conflictingBooking.time} - {conflictingBooking.endTime}</div>
+                  <div>{formatTimeRange(conflictingBooking, " - ")}</div>
                   <div>{conflictingBooking.phone}</div>
                 </div>
               )}

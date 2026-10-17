@@ -6,6 +6,7 @@ from flask_cors import CORS
 
 from booking_service import (
     MAX_PARTY_SIZE,
+    OPEN_ENDED_FROM,
     SLOT_MINUTES,
     build_customer_name,
     combine_date_time,
@@ -128,6 +129,7 @@ def availability():
             "date": date_value,
             "guests": guests,
             "slotMinutes": SLOT_MINUTES,
+            "openEndedFrom": OPEN_ENDED_FROM.strftime("%H:%M"),
             "schedule": result["schedule"],
             "slots": result["slots"],
         }

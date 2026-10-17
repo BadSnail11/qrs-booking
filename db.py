@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -42,26 +43,23 @@ def execute_returning(sql, params=None):
             return cur.fetchone()
 
 
-def find_reservation_slot_conflict(table_ids, reservation_time, exclude_reservation_id=None):
-    """If any of the tables is already used by another reservation in the same ~1h window, return that row."""
-    if not table_ids:
-        return None
-    return query_one(
-        """
-        SELECT r.id
-        FROM reservations r
-        JOIN reservation_tables rt ON rt.reservation_id = r.id
-        WHERE rt.table_id = ANY(%s::int[])
-          AND r.reservation_time >= %s::timestamp - interval '59 minutes'
-          AND r.reservation_time <= %s::timestamp + interval '59 minutes'
-          AND (%s IS NULL OR r.id <> %s)
-        LIMIT 1
-        """,
-        (
-            list(table_ids),
-            reservation_time,
-            reservation_time,
-            exclude_reservation_id,
-            exclude_reservation_id,
-        ),
-    )
+@contextmanager
+def advisory_lock(namespace, key):
+    """Hold a Postgres session-level advisory lock on a dedicated connection.
+
+    Other connections still see each committed write, so code inside can keep
+    using query_*/execute; the lock is released on exit or if the process dies.
+    """
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_lock(%s, %s)", (namespace, key))
+        conn.commit()
+        yield
+    finally:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_unlock(%s, %s)", (namespace, key))
+            conn.commit()
+        finally:
+            conn.close()

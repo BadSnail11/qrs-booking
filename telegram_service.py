@@ -6,7 +6,7 @@ from urllib import error, parse, request
 from db import execute, execute_returning, query_all
 from request_context import get_restaurant_id
 
-from booking_service import format_sets_display
+from booking_service import format_sets_display, format_time_range
 
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -159,7 +159,7 @@ def notify_pending_reservation(reservation):
         f"Телефон: {escape(str(reservation.get('phone') or '-'))}",
         f"Email: {escape(str(reservation.get('email') or '-'))}",
         f"Дата: {escape(str(reservation['date']))}",
-        f"Время: {escape(str(reservation['time']))} - {escape(str(reservation['endTime']))}",
+        f"Время: {escape(format_time_range(reservation, ' - '))}",
         f"Гостей: {reservation['guests']}",
         f"Сетов: {format_sets_display(reservation.get('sets'))}",
         f"Столы: {escape(table_label)}",
