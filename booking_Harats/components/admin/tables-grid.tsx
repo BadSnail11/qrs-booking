@@ -4,6 +4,7 @@ import { Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { Booking, Table } from "@/app/admin/page"
 import { ReservationArrivalControls } from "@/components/admin/reservation-arrival-controls"
+import { formatTimeRange } from "@/lib/booking-time"
 
 interface TablesGridProps {
   tables: Table[]
@@ -75,7 +76,7 @@ export function TablesGrid({
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[10px] text-muted-foreground sm:text-xs">
-                            {booking.time}-{booking.endTime}
+                            {formatTimeRange(booking)}
                           </span>
                           <span className="text-[10px] text-muted-foreground sm:text-xs">{booking.guests} гост.</span>
                         </div>

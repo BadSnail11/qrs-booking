@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/utils"
 import type { Booking } from "@/app/admin/page"
 import { formatSetsLabel } from "@/lib/booking-limits"
+import { formatTimeRange } from "@/lib/booking-time"
 import { adminApi } from "@/lib/api"
 
 interface AnalyticsModalProps {
@@ -115,7 +116,7 @@ export function AnalyticsModal({
       "Телефон": b.phone,
       "Email": b.email || "",
       "Дата": b.date,
-      "Время": `${b.time} - ${b.endTime}`,
+      "Время": formatTimeRange(b, " - "),
       "Гости": b.guests,
       "Сеты": formatSetsLabel(b.sets),
       "Стол": b.tableId,

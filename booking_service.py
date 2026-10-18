@@ -10,7 +10,7 @@ from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from openpyxl import Workbook
-from db import execute, execute_returning, query_all, query_one
+from db import advisory_lock, execute, execute_returning, query_all, query_one
 from phone_utils import normalize_phone
 from request_context import get_restaurant_id
 import iiko_service
@@ -23,6 +23,12 @@ CLOSE_HOUR = int(os.getenv("CLOSE_HOUR", "22"))
 MAX_COMBINED_TABLES = int(os.getenv("MAX_COMBINED_TABLES", "3"))
 MAX_EXTRA_SEATS = int(os.getenv("MAX_EXTRA_SEATS", "2"))
 IIKO_MIN_LEAD_MINUTES = int(os.getenv("IIKO_MIN_LEAD_MINUTES", "2"))
+# Reservations starting at/after this time have no time limit: the table stays
+# taken until the business day ends (the next morning).
+OPEN_ENDED_FROM = time.fromisoformat(os.getenv("OPEN_ENDED_FROM", "17:00"))
+BUSINESS_DAY_END_HOUR = int(os.getenv("BUSINESS_DAY_END_HOUR", "6"))
+IIKO_OPEN_ENDED_MAX_MINUTES = int(os.getenv("IIKO_OPEN_ENDED_MAX_MINUTES", "480"))
+RESERVATION_LOCK_NAMESPACE = 73015
 MAX_PARTY_SIZE = 15
 MAX_SETS = 15
 logger = logging.getLogger(__name__)
@@ -237,7 +243,7 @@ def _sync_reservation_to_iiko(reservation_id, restaurant_id):
             guests_count=row["guests"],
             table_ids=table_ids,
             estimated_start_time=estimated_start,
-            duration_minutes=row["duration_minutes"] or SLOT_MINUTES,
+            duration_minutes=_iiko_duration_minutes(rt, row["duration_minutes"]),
             comment=row["note"] or "",
         )
         execute(
@@ -275,6 +281,13 @@ def _sync_reservation_to_iiko(reservation_id, restaurant_id):
             (reservation_id,),
         )
         logger.error("Failed to sync reservation %s to iiko: %s", reservation_id, e)
+
+
+def _iiko_duration_minutes(reservation_time, duration_minutes):
+    minutes = int((reservation_end(reservation_time, duration_minutes) - reservation_time).total_seconds() // 60)
+    if is_open_ended(reservation_time):
+        minutes = min(minutes, IIKO_OPEN_ENDED_MAX_MINUTES)
+    return max(minutes, duration_minutes or SLOT_MINUTES)
 
 
 def _cancel_iiko_reserve(reservation_id, restaurant_id):
@@ -341,10 +354,59 @@ def _resync_updated_reservation_to_iiko(reservation_id, restaurant_id, old, new_
     _sync_reservation_to_iiko(reservation_id, restaurant_id)
 
 
+def _local_naive(dt):
+    if dt.tzinfo is not None:
+        return dt.astimezone(restaurant_tz()).replace(tzinfo=None)
+    return dt
+
+
+def is_open_ended(reservation_time):
+    t = _local_naive(reservation_time).time()
+    return t >= OPEN_ENDED_FROM or t < time(BUSINESS_DAY_END_HOUR)
+
+
+def business_day_end(reservation_time):
+    day = (reservation_time - timedelta(hours=BUSINESS_DAY_END_HOUR)).date()
+    return datetime.combine(day + timedelta(days=1), time(BUSINESS_DAY_END_HOUR))
+
+
+def reservation_end(reservation_time, duration_minutes=None):
+    reservation_time = _local_naive(reservation_time)
+    end = reservation_time + timedelta(minutes=max(SLOT_MINUTES, duration_minutes or 0))
+    if is_open_ended(reservation_time):
+        end = max(end, business_day_end(reservation_time))
+    return end
+
+
+def reservation_end_sql(alias):
+    """SQL twin of reservation_end() for a reservations row; constants are validated ints/times."""
+    rt = f"{alias}.reservation_time"
+    h = BUSINESS_DAY_END_HOUR
+    return (
+        f"GREATEST({rt} + make_interval(mins => GREATEST({alias}.duration_minutes, {SLOT_MINUTES})), "
+        f"CASE WHEN {rt}::time >= TIME '{OPEN_ENDED_FROM.strftime('%H:%M')}' OR {rt}::time < TIME '{h:02d}:00' "
+        f"THEN date_trunc('day', {rt} - interval '{h} hours') + interval '1 day' + interval '{h} hours' "
+        f"ELSE {rt} END)"
+    )
+
+
+def format_time_range(reservation, sep="-"):
+    """'18:00-20:00', or '18:00, без ограничения по времени' for open-ended reservations."""
+    if reservation.get("openEnded"):
+        return f"{reservation['time']}, без ограничения по времени"
+    if reservation.get("endTime"):
+        return f"{reservation['time']}{sep}{reservation['endTime']}"
+    return reservation["time"]
+
+
+def reservation_lock(restaurant_id):
+    """Serializes check-then-write of reservations per restaurant (across workers/processes)."""
+    return advisory_lock(RESERVATION_LOCK_NAMESPACE, int(restaurant_id))
+
+
 def reservation_window(reservation_time):
-    start = reservation_time
-    end = reservation_time + timedelta(minutes=SLOT_MINUTES)
-    return start, end
+    start = _local_naive(reservation_time)
+    return start, reservation_end(start)
 
 
 def generate_confirmation_code():
@@ -832,16 +894,16 @@ def combo_should_auto_confirm(combo, guests):
 def get_table_conflict_details(table_ids, reservation_time, exclude_reservation_id=None):
     start, end = reservation_window(reservation_time)
     return query_one(
-        """
-        SELECT r.id, r.customer_name, r.phone, r.reservation_time
+        f"""
+        SELECT r.id, r.customer_name, r.phone, r.reservation_time, r.duration_minutes
         FROM reservations r
         JOIN reservation_tables rt ON rt.reservation_id = r.id
         WHERE rt.table_id = ANY(%s::int[])
           AND r.restaurant_id = %s
           AND r.status IN ('pending', 'confirmed')
           AND r.reservation_time < %s
-          AND r.reservation_time + (%s || ' minutes')::interval > %s
-          AND (%s IS NULL OR r.id <> %s)
+          AND {reservation_end_sql("r")} > %s
+          AND (%s::int IS NULL OR r.id <> %s::int)
         ORDER BY r.reservation_time
         LIMIT 1
         """,
@@ -849,7 +911,6 @@ def get_table_conflict_details(table_ids, reservation_time, exclude_reservation_
             list(table_ids),
             get_restaurant_id(),
             end,
-            SLOT_MINUTES,
             start,
             exclude_reservation_id,
             exclude_reservation_id,
@@ -975,59 +1036,62 @@ def create_reservation(
         raise ValueError(f"guests must be between 1 and {MAX_PARTY_SIZE}")
     if sets < 0 or sets > MAX_SETS:
         raise ValueError(f"sets must be between 0 and {MAX_SETS}")
+    if isinstance(reservation_time, str):
+        reservation_time = parse_iso_dt(reservation_time)
     assert_sets_allowed_for_public_booking(rid, reservation_time, sets, created_by_admin)
-    if table_ids:
-        issues = validate_table_selection(table_ids, guests, reservation_time)
-        if (
-            issues["capacity_issue"]
-            or issues["unite_issue"]
-            or issues["conflict"]
-            or issues["block"]
-        ) and not force:
-            raise ValueError(
-                "Selected tables require force=true due to capacity/conflict constraints"
+    with reservation_lock(rid):
+        if table_ids:
+            issues = validate_table_selection(table_ids, guests, reservation_time)
+            if (
+                issues["capacity_issue"]
+                or issues["unite_issue"]
+                or issues["conflict"]
+                or issues["block"]
+            ) and not force:
+                raise ValueError(
+                    "Selected tables require force=true due to capacity/conflict constraints"
+                )
+            assigned_table_ids = list(table_ids)
+            status = "confirmed" if created_by_admin or issues["auto_confirm"] else "pending"
+        else:
+            combo = pick_best_table_combo(guests, reservation_time)
+            if combo is None:
+                raise ValueError("No available table combination for requested time and party size")
+            assigned_table_ids = combo["table_ids"]
+            status = "confirmed" if created_by_admin or combo["auto_confirm"] else "pending"
+
+        reservation = execute_returning(
+            """
+            INSERT INTO reservations (
+                restaurant_id, customer_name, reservation_time, guests, sets, email, phone, note, status,
+                confirmation_code, created_by_admin, admin_note, offer_accepted_at, offer_document, updated_at
             )
-        assigned_table_ids = list(table_ids)
-        status = "confirmed" if created_by_admin or issues["auto_confirm"] else "pending"
-    else:
-        combo = pick_best_table_combo(guests, reservation_time)
-        if combo is None:
-            raise ValueError("No available table combination for requested time and party size")
-        assigned_table_ids = combo["table_ids"]
-        status = "confirmed" if created_by_admin or combo["auto_confirm"] else "pending"
-
-    reservation = execute_returning(
-        """
-        INSERT INTO reservations (
-            restaurant_id, customer_name, reservation_time, guests, sets, email, phone, note, status,
-            confirmation_code, created_by_admin, admin_note, offer_accepted_at, offer_document, updated_at
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            RETURNING *
+            """,
+            (
+                rid,
+                customer_name,
+                reservation_time,
+                guests,
+                sets,
+                email,
+                phone,
+                note,
+                status,
+                generate_confirmation_code(),
+                created_by_admin,
+                admin_note,
+                offer_accepted_at,
+                offer_document,
+            ),
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-        RETURNING *
-        """,
-        (
-            rid,
-            customer_name,
-            reservation_time,
-            guests,
-            sets,
-            email,
-            phone,
-            note,
-            status,
-            generate_confirmation_code(),
-            created_by_admin,
-            admin_note,
-            offer_accepted_at,
-            offer_document,
-        ),
-    )
 
-    for table_id in assigned_table_ids:
-        execute(
-            "INSERT INTO reservation_tables (reservation_id, table_id) VALUES (%s, %s)",
-            (reservation["id"], table_id),
-        )
+        for table_id in assigned_table_ids:
+            execute(
+                "INSERT INTO reservation_tables (reservation_id, table_id) VALUES (%s, %s)",
+                (reservation["id"], table_id),
+            )
 
     if status == "confirmed":
         _sync_reservation_to_iiko(reservation["id"], rid)
@@ -1042,7 +1106,7 @@ def reservation_payload(row):
     table_ids = [int(x) for x in row["table_ids"].split(",")] if row.get("table_ids") else []
     first_name, last_name = split_customer_name(row["customer_name"])
     reservation_time = row["reservation_time"]
-    end_time = reservation_time + timedelta(minutes=SLOT_MINUTES)
+    end_time = reservation_end(reservation_time, row.get("duration_minutes"))
 
     return {
         "id": str(row["id"]),
@@ -1054,6 +1118,7 @@ def reservation_payload(row):
         "time": reservation_time.strftime("%H:%M"),
         "endDate": end_time.date().isoformat(),
         "endTime": end_time.strftime("%H:%M"),
+        "openEnded": is_open_ended(reservation_time),
         "guests": row["guests"],
         "sets": row.get("sets", 1),
         "restaurantId": row.get("restaurant_id"),
@@ -1102,9 +1167,9 @@ def sync_arrival_status_for_time(restaurant_id=None):
           AND status = 'confirmed'
           AND arrival_status IS NULL
           AND reservation_time <= {local_now}
-          AND reservation_time + (%s * INTERVAL '1 minute') >= {local_now}
+          AND {reservation_end_sql("reservations")} >= {local_now}
         """,
-        (rid, RESTAURANT_TZ, SLOT_MINUTES, RESTAURANT_TZ),
+        (rid, RESTAURANT_TZ, RESTAURANT_TZ),
     )
 
 
@@ -1271,49 +1336,50 @@ def update_reservation(
     new_admin_note = updates.get("admin_note", current["admin_note"])
     new_table_ids = updates.get("table_ids") or ([updates["tableId"]] if updates.get("tableId") else current["table_ids"])
 
-    issues = validate_table_selection(
-        new_table_ids, new_guests, new_time, exclude_reservation_id=int(reservation_id)
-    )
-    if force:
-        pass
-    elif issues["unite_issue"] or issues["conflict"] or issues["block"]:
-        raise ValueError("Update requires force=true due to capacity/conflict constraints")
-    elif issues["capacity_issue"] and not allow_insufficient_capacity:
-        raise ValueError("Update requires force=true due to capacity/conflict constraints")
-
-    execute(
-        """
-        UPDATE reservations
-        SET customer_name = %s,
-            reservation_time = %s,
-            guests = %s,
-            sets = %s,
-            email = %s,
-            phone = %s,
-            note = %s,
-            admin_note = %s,
-            updated_at = NOW()
-        WHERE id = %s AND restaurant_id = %s
-        """,
-        (
-            new_name,
-            new_time,
-            new_guests,
-            new_sets,
-            new_email,
-            new_phone,
-            new_note,
-            new_admin_note,
-            reservation_id,
-            get_restaurant_id(),
-        ),
-    )
-    execute("DELETE FROM reservation_tables WHERE reservation_id = %s", (reservation_id,))
-    for table_id in new_table_ids:
-        execute(
-            "INSERT INTO reservation_tables (reservation_id, table_id) VALUES (%s, %s)",
-            (reservation_id, table_id),
+    with reservation_lock(get_restaurant_id()):
+        issues = validate_table_selection(
+            new_table_ids, new_guests, new_time, exclude_reservation_id=int(reservation_id)
         )
+        if force:
+            pass
+        elif issues["unite_issue"] or issues["conflict"] or issues["block"]:
+            raise ValueError("Update requires force=true due to capacity/conflict constraints")
+        elif issues["capacity_issue"] and not allow_insufficient_capacity:
+            raise ValueError("Update requires force=true due to capacity/conflict constraints")
+
+        execute(
+            """
+            UPDATE reservations
+            SET customer_name = %s,
+                reservation_time = %s,
+                guests = %s,
+                sets = %s,
+                email = %s,
+                phone = %s,
+                note = %s,
+                admin_note = %s,
+                updated_at = NOW()
+            WHERE id = %s AND restaurant_id = %s
+            """,
+            (
+                new_name,
+                new_time,
+                new_guests,
+                new_sets,
+                new_email,
+                new_phone,
+                new_note,
+                new_admin_note,
+                reservation_id,
+                get_restaurant_id(),
+            ),
+        )
+        execute("DELETE FROM reservation_tables WHERE reservation_id = %s", (reservation_id,))
+        for table_id in new_table_ids:
+            execute(
+                "INSERT INTO reservation_tables (reservation_id, table_id) VALUES (%s, %s)",
+                (reservation_id, table_id),
+            )
 
     rid = get_restaurant_id()
     if current["status"] == "confirmed":
@@ -1377,21 +1443,38 @@ def cancel_reservation(reservation_id, reason=None):
 
 
 def restore_cancelled_reservation(reservation_id):
-    return execute_returning(
-        """
-        UPDATE reservations
-        SET status = 'pending',
-            cancelled_at = NULL,
-            arrival_status = NULL,
-            arrived_at = NULL,
-            updated_at = NOW()
-        WHERE id = %s
-          AND restaurant_id = %s
-          AND status = 'cancelled'
-        RETURNING id
-        """,
-        (reservation_id, get_restaurant_id()),
-    )
+    rid = get_restaurant_id()
+    with reservation_lock(rid):
+        current = get_reservation(reservation_id, restaurant_id=rid)
+        if not current or current["status"] != "cancelled":
+            return None
+        if current["table_ids"]:
+            conflict = get_table_conflict_details(
+                current["table_ids"],
+                parse_iso_dt(current["reservation_time"]),
+                exclude_reservation_id=int(reservation_id),
+            )
+            if conflict:
+                raise ValueError(
+                    f"Стол уже занят бронью #{conflict['id']} ({conflict['customer_name']}, "
+                    f"{conflict['reservation_time'].strftime('%d.%m %H:%M')}). "
+                    "Восстановить её нельзя — создайте новую бронь на свободный стол или время."
+                )
+        return execute_returning(
+            """
+            UPDATE reservations
+            SET status = 'pending',
+                cancelled_at = NULL,
+                arrival_status = NULL,
+                arrived_at = NULL,
+                updated_at = NOW()
+            WHERE id = %s
+              AND restaurant_id = %s
+              AND status = 'cancelled'
+            RETURNING id
+            """,
+            (reservation_id, rid),
+        )
 
 
 def delete_cancelled_reservation(reservation_id):

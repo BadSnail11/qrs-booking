@@ -5,6 +5,7 @@ from datetime import timedelta
 from booking_service import (
     RESTAURANT_TZ,
     format_sets_display,
+    format_time_range,
     reservation_payload,
 )
 from db import execute, query_all
@@ -21,8 +22,7 @@ def _message_for_event(event_type, reservation):
     rid = reservation.get("id")
     date = reservation.get("date")
     time = reservation.get("time")
-    end_time = reservation.get("endTime")
-    time_range = f"{time}-{end_time}" if end_time else time
+    time_range = format_time_range(reservation)
     guests = reservation.get("guests")
     sets = format_sets_display(reservation.get("sets"))
     if event_type == "confirmed":
