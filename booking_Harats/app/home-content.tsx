@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { BookingForm } from "@/components/booking-form"
 import { RestaurantPicker } from "@/components/restaurant-picker"
-import { userApi, type GuestContactPublic } from "@/lib/api"
+import { userApi, type GuestContactPublic, type OnlineGuestLimit } from "@/lib/api"
 import type { SetsChoiceInterval } from "@/lib/booking-limits"
 import { FileText, ArrowUpRight } from "lucide-react"
 
@@ -60,11 +60,13 @@ function BookingLayout({
   menuPdfHref,
   guestContact,
   setsChoiceIntervals,
+  onlineGuestLimits,
 }: {
   restaurantSlug: string
   menuPdfHref: string | null
   guestContact: GuestContactPublic | null
   setsChoiceIntervals: SetsChoiceInterval[]
+  onlineGuestLimits: OnlineGuestLimit[]
 }) {
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -99,7 +101,12 @@ function BookingLayout({
         ) : null}
 
         <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
-          <BookingForm restaurantSlug={restaurantSlug} setsChoiceIntervals={setsChoiceIntervals} />
+          <BookingForm
+            restaurantSlug={restaurantSlug}
+            setsChoiceIntervals={setsChoiceIntervals}
+            onlineGuestLimits={onlineGuestLimits}
+            restaurantPhone={guestContact?.phone ?? null}
+          />
         </div>
       </main>
 
@@ -151,6 +158,7 @@ export function HomeContent() {
   const [menuPdfHref, setMenuPdfHref] = useState<string | null>(null)
   const [guestContact, setGuestContact] = useState<GuestContactPublic | null>(null)
   const [setsChoiceIntervals, setSetsChoiceIntervals] = useState<SetsChoiceInterval[]>([])
+  const [onlineGuestLimits, setOnlineGuestLimits] = useState<OnlineGuestLimit[]>([])
 
   useEffect(() => {
     if (!restaurantSlug) return
@@ -164,12 +172,14 @@ export function HomeContent() {
         setMenuPdfHref(path ? `${USER_API_BASE}${path}` : null)
         setGuestContact(r?.guestContact ?? null)
         setSetsChoiceIntervals(r?.setsChoiceIntervals ?? [])
+        setOnlineGuestLimits(r?.onlineGuestLimits ?? [])
       })
       .catch(() => {
         if (!cancelled) {
           setMenuPdfHref(null)
           setGuestContact(null)
           setSetsChoiceIntervals([])
+          setOnlineGuestLimits([])
         }
       })
     return () => {
@@ -187,6 +197,7 @@ export function HomeContent() {
       menuPdfHref={menuPdfHref}
       guestContact={guestContact}
       setsChoiceIntervals={setsChoiceIntervals}
+      onlineGuestLimits={onlineGuestLimits}
     />
   )
 }

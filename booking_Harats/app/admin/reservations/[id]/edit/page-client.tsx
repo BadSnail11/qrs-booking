@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
+import { getPhoneError } from "@/lib/phone"
 import { formatTimeRange, overlapsNewSlot } from "@/lib/booking-time"
 import { adminSetSelectItems, partySizeOptions } from "@/lib/booking-limits"
 import { ReservationStatusBadge } from "@/components/admin/reservation-status-badge"
@@ -284,6 +285,11 @@ export function AdminEditReservationPageClient({
   }
 
   const handleSave = () => {
+    const phoneError = getPhoneError(formData.phone)
+    if (phoneError) {
+      setSubmitError(phoneError)
+      return
+    }
     if (!formData.tableOptionKey) {
       setSubmitError("Выберите стол для бронирования")
       return

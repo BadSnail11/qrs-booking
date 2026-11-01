@@ -125,6 +125,123 @@ def delete_sets_choice_interval(interval_id: int) -> bool:
     return row is not None
 
 
+_guest_limits_ready = False
+
+# Seeded when the table is first created, so the December limits work right after
+# deploy without a manual migration; afterwards they are managed in admin settings.
+_DEFAULT_GUEST_LIMITS = {
+    "harats": [("2026-12-18", 6), ("2026-12-19", 6), ("2026-12-26", 6), ("2026-12-29", 6), ("2026-12-30", 6)],
+}
+
+
+def _ensure_guest_limits_table():
+    global _guest_limits_ready
+    if _guest_limits_ready:
+        return
+    existed = query_one("SELECT to_regclass('online_guest_limits') IS NOT NULL AS ok")["ok"]
+    execute(
+        """
+        CREATE TABLE IF NOT EXISTS online_guest_limits (
+            id SERIAL PRIMARY KEY,
+            restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+            limit_date DATE NOT NULL,
+            max_guests INTEGER NOT NULL CHECK (max_guests > 0),
+            UNIQUE (restaurant_id, limit_date)
+        )
+        """
+    )
+    if not existed:
+        for slug, limits in _DEFAULT_GUEST_LIMITS.items():
+            for limit_date, max_guests in limits:
+                execute(
+                    """
+                    INSERT INTO online_guest_limits (restaurant_id, limit_date, max_guests)
+                    SELECT id, %s, %s FROM restaurants WHERE slug = %s
+                    ON CONFLICT (restaurant_id, limit_date) DO NOTHING
+                    """,
+                    (limit_date, max_guests, slug),
+                )
+    _guest_limits_ready = True
+
+
+def _guest_limit_payload(row):
+    return {"id": row["id"], "date": row["limit_date"].isoformat(), "maxGuests": row["max_guests"]}
+
+
+def list_online_guest_limits(restaurant_id=None, upcoming_only=False):
+    _ensure_guest_limits_table()
+    rid = int(restaurant_id) if restaurant_id is not None else get_restaurant_id()
+    rows = query_all(
+        f"""
+        SELECT id, limit_date, max_guests
+        FROM online_guest_limits
+        WHERE restaurant_id = %s
+          {"AND limit_date >= (timezone(%s, now()))::date" if upcoming_only else ""}
+        ORDER BY limit_date
+        """,
+        (rid, RESTAURANT_TZ) if upcoming_only else (rid,),
+    )
+    return [_guest_limit_payload(r) for r in rows]
+
+
+def upsert_online_guest_limit(date_str, max_guests):
+    _ensure_guest_limits_table()
+    try:
+        limit_date = datetime.strptime((date_str or "").strip(), "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError("date must be YYYY-MM-DD") from exc
+    max_guests = int(max_guests)
+    if max_guests < 1 or max_guests > MAX_PARTY_SIZE:
+        raise ValueError(f"maxGuests must be between 1 and {MAX_PARTY_SIZE}")
+    row = execute_returning(
+        """
+        INSERT INTO online_guest_limits (restaurant_id, limit_date, max_guests)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (restaurant_id, limit_date) DO UPDATE SET max_guests = EXCLUDED.max_guests
+        RETURNING id, limit_date, max_guests
+        """,
+        (get_restaurant_id(), limit_date, max_guests),
+    )
+    return _guest_limit_payload(row)
+
+
+def delete_online_guest_limit(limit_id):
+    _ensure_guest_limits_table()
+    row = execute_returning(
+        "DELETE FROM online_guest_limits WHERE id = %s AND restaurant_id = %s RETURNING id",
+        (int(limit_id), get_restaurant_id()),
+    )
+    return row is not None
+
+
+def online_guest_limit_for(restaurant_id, reservation_date):
+    """Max party size bookable online on that date, or None if unrestricted."""
+    _ensure_guest_limits_table()
+    row = query_one(
+        "SELECT max_guests FROM online_guest_limits WHERE restaurant_id = %s AND limit_date = %s",
+        (int(restaurant_id), reservation_date),
+    )
+    return int(row["max_guests"]) if row else None
+
+
+class GuestLimitExceeded(ValueError):
+    def __init__(self, max_guests, phone):
+        self.max_guests = max_guests
+        self.phone = phone
+        contact = f" по телефону {phone}" if phone else ""
+        super().__init__(
+            f"На эту дату онлайн можно забронировать стол не более чем на {max_guests} гостей. "
+            f"Чтобы забронировать стол на большую компанию, позвоните нам{contact}."
+        )
+
+
+def assert_online_guest_limit(restaurant_id, reservation_time, guests):
+    limit = online_guest_limit_for(restaurant_id, _local_naive(reservation_time).date())
+    if limit is not None and int(guests) > limit:
+        row = query_one("SELECT public_guest_phone FROM restaurants WHERE id = %s", (int(restaurant_id),))
+        raise GuestLimitExceeded(limit, (row or {}).get("public_guest_phone"))
+
+
 def format_sets_display(sets):
     """Human-readable sets for email/Telegram (0 = «Без сетов»)."""
     if sets is None:
@@ -1039,6 +1156,8 @@ def create_reservation(
     if isinstance(reservation_time, str):
         reservation_time = parse_iso_dt(reservation_time)
     assert_sets_allowed_for_public_booking(rid, reservation_time, sets, created_by_admin)
+    if not created_by_admin:
+        assert_online_guest_limit(rid, reservation_time, guests)
     with reservation_lock(rid):
         if table_ids:
             issues = validate_table_selection(table_ids, guests, reservation_time)

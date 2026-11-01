@@ -37,6 +37,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
+import { getPhoneError } from "@/lib/phone"
+import type { OnlineGuestLimit } from "@/lib/api"
 import { isOpenEndedTime, OPEN_ENDED_FROM } from "@/lib/booking-time"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
@@ -166,15 +168,8 @@ type SlugStatus = "loading" | "ok" | "invalid" | "error"
 export type BookingFormProps = {
   restaurantSlug: string
   setsChoiceIntervals: SetsChoiceInterval[]
-}
-
-function getPhoneError(phone: string): string | null {
-  const trimmed = phone.trim()
-  if (!trimmed) return "Укажите номер телефона."
-  const digits = trimmed.replace(/\D/g, "")
-  if (digits.length < 10) return "Телефон слишком короткий. Нужно не менее 10 цифр."
-  if (digits.length > 15) return "Слишком много цифр в номере."
-  return null
+  onlineGuestLimits?: OnlineGuestLimit[]
+  restaurantPhone?: string | null
 }
 
 function phoneDigitsKey(phone: string) {
@@ -201,7 +196,12 @@ type PhoneConfirmedStatus = {
   namesLocked?: boolean
 }
 
-export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingFormProps) {
+export function BookingForm({
+  restaurantSlug,
+  setsChoiceIntervals,
+  onlineGuestLimits = [],
+  restaurantPhone = null,
+}: BookingFormProps) {
   const [slugStatus, setSlugStatus] = useState<SlugStatus>("loading")
   const [restaurantDisplayName, setRestaurantDisplayName] = useState("")
   const [slugCheckRetryKey, setSlugCheckRetryKey] = useState(0)
@@ -246,6 +246,26 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
   const [marketingConsent, setMarketingConsent] = useState(false)
 
   const dateValue = useMemo(() => (date ? format(date, "yyyy-MM-dd") : ""), [date])
+  const [guestLimitDialog, setGuestLimitDialog] = useState<{ date: Date; maxGuests: number } | null>(null)
+
+  const guestLimitFor = (day: Date | undefined): number | null => {
+    if (!day) return null
+    const key = format(day, "yyyy-MM-dd")
+    return onlineGuestLimits.find((x) => x.date === key)?.maxGuests ?? null
+  }
+
+  /** Opens the "call us" dialog and returns true when the party is too big to book online that day. */
+  const exceedsGuestLimit = (day: Date | undefined, guests: string): boolean => {
+    const limit = guestLimitFor(day)
+    const g = parseInt(guests, 10)
+    if (!day || limit === null || !Number.isFinite(g) || g <= limit) return false
+    setGuestLimitDialog({ date: day, maxGuests: limit })
+    return true
+  }
+
+  const selectedGuestLimit = guestLimitFor(date)
+  const guestLimitExceeded =
+    selectedGuestLimit !== null && parseInt(formData.guests || "0", 10) > selectedGuestLimit
   const isSetsChoiceAllowed = useMemo(
     () => Boolean(date && isDateInSetsChoiceRange(date, setsChoiceIntervals)),
     [date, setsChoiceIntervals]
@@ -514,6 +534,8 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
       const g = parseInt(formData.guests, 10)
       if (!Number.isFinite(g) || g < 1 || g > MAX_PARTY_SIZE) {
         e.guests = `Максимум ${MAX_PARTY_SIZE} гостей.`
+      } else if (guestLimitExceeded) {
+        e.guests = `На эту дату онлайн — не более ${selectedGuestLimit} гостей. Для большой компании позвоните нам.`
       }
     }
     if (date) {
@@ -647,6 +669,9 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
       const data = await userApi.getAvailability(format(nextDate, "yyyy-MM-dd"), parseInt(guests, 10), slug)
       setAvailabilitySchedule(data.schedule)
       setAvailableSlots(data.slots.filter((slot) => slot.available))
+      if (data.guestLimit) {
+        setGuestLimitDialog({ date: nextDate, maxGuests: data.guestLimit.maxGuests })
+      }
       setSlotMinutes(data.slotMinutes ?? DEFAULT_SLOT_MINUTES)
       setOpenEndedFrom(data.openEndedFrom ?? OPEN_ENDED_FROM)
     } catch {
@@ -1101,6 +1126,10 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
               onValueChange={(value) => {
                 clearFieldError("guests")
                 setFormData((prev) => ({ ...prev, guests: value, time: "" }))
+                if (exceedsGuestLimit(date, value)) {
+                  setAvailableSlots([])
+                  return
+                }
                 void loadAvailability(date, value, restaurantSlug)
               }}
             >
@@ -1125,6 +1154,21 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
               </SelectContent>
             </Select>
             {fieldErrors.guests && <p className="text-xs text-destructive">{fieldErrors.guests}</p>}
+            {!fieldErrors.guests && guestLimitExceeded && (
+              <p className="text-xs text-destructive">
+                На эту дату онлайн — не более {selectedGuestLimit} гостей.{" "}
+                {restaurantPhone ? (
+                  <>
+                    Позвоните нам:{" "}
+                    <a href={`tel:${restaurantPhone.replace(/[^\d+]/g, "")}`} className="whitespace-nowrap font-medium underline">
+                      {restaurantPhone}
+                    </a>
+                  </>
+                ) : (
+                  "Позвоните в ресторан."
+                )}
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -1174,6 +1218,10 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
                       }
                       return { ...prev, time: "", set: nextSet }
                     })
+                    if (exceedsGuestLimit(value, formData.guests)) {
+                      setAvailableSlots([])
+                      return
+                    }
                     void loadAvailability(value, formData.guests, restaurantSlug)
                   }}
                   locale={ru}
@@ -1554,6 +1602,48 @@ export function BookingForm({ restaurantSlug, setsChoiceIntervals }: BookingForm
             <AlertDialogAction onClick={() => void submitReservation()}>
               Да, отправить
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={guestLimitDialog !== null} onOpenChange={(open) => !open && setGuestLimitDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Phone className="h-5 w-5 text-primary" />
+              Бронирование по телефону
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {guestLimitDialog && (
+                <>
+                  {format(guestLimitDialog.date, "d MMMM", { locale: ru })} онлайн можно забронировать стол
+                  не более чем на {guestLimitDialog.maxGuests} гостей. Чтобы забронировать стол на большую
+                  компанию, позвоните нам
+                  {restaurantPhone ? (
+                    <>
+                      {" "}по номеру{" "}
+                      <a
+                        href={`tel:${restaurantPhone.replace(/[^\d+]/g, "")}`}
+                        className="whitespace-nowrap font-medium text-foreground underline"
+                      >
+                        {restaurantPhone}
+                      </a>
+                      .
+                    </>
+                  ) : (
+                    "."
+                  )}
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Изменить бронь</AlertDialogCancel>
+            {restaurantPhone && (
+              <AlertDialogAction asChild>
+                <a href={`tel:${restaurantPhone.replace(/[^\d+]/g, "")}`}>Позвонить</a>
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

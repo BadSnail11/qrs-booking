@@ -5,7 +5,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from db import execute, execute_returning, query_one
-from phone_utils import normalize_phone, phones_for_sms_api
+from phone_utils import normalize_phone, phone_validation_error, phones_for_sms_api
 from sms_service import send_sms, sms_enabled
 from visitor_service import get_visitor_by_phone, is_phone_confirmed
 
@@ -54,7 +54,7 @@ def phone_already_confirmed(restaurant_id: int, phone: str) -> dict:
     Returns { alreadyConfirmed, verificationToken?, reason? }.
     """
     phone_normalized = normalize_phone(phone)
-    if len(phone_normalized) < 10:
+    if phone_validation_error(phone):
         return {"alreadyConfirmed": False}
 
     visitor = get_visitor_by_phone(restaurant_id, phone)
@@ -103,8 +103,9 @@ def _recent_challenge(restaurant_id: int, phone_normalized: str):
 
 def send_phone_verification_code(restaurant_id: int, phone: str) -> dict:
     phone_normalized = normalize_phone(phone)
-    if len(phone_normalized) < 10:
-        raise ValueError("Некорректный номер телефона")
+    phone_error = phone_validation_error(phone)
+    if phone_error:
+        raise ValueError(phone_error)
 
     confirmed = phone_already_confirmed(restaurant_id, phone)
     if confirmed.get("alreadyConfirmed"):
@@ -161,8 +162,9 @@ def send_phone_verification_code(restaurant_id: int, phone: str) -> dict:
 
 def verify_phone_code(restaurant_id: int, phone: str, code: str) -> dict:
     phone_normalized = normalize_phone(phone)
-    if len(phone_normalized) < 10:
-        raise ValueError("Некорректный номер телефона")
+    phone_error = phone_validation_error(phone)
+    if phone_error:
+        raise ValueError(phone_error)
     code = (code or "").strip()
     if len(code) != CODE_LENGTH or not code.isdigit():
         raise ValueError("Введите 6-значный код из SMS")

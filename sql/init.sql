@@ -221,7 +221,19 @@ CREATE TABLE IF NOT EXISTS reservation_sms_notifications (
     event_type TEXT NOT NULL,
     scheduled_for TIMESTAMP,
     sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    status TEXT NOT NULL DEFAULT 'sent',
+    error TEXT,
     UNIQUE(reservation_id, event_type, scheduled_for)
+);
+
+-- ── Online guest limits per date ────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS online_guest_limits (
+    id SERIAL PRIMARY KEY,
+    restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    limit_date DATE NOT NULL,
+    max_guests INTEGER NOT NULL CHECK (max_guests > 0),
+    UNIQUE (restaurant_id, limit_date)
 );
 
 -- ── iiko request log (auto-block guard) ─────────────────────────────────
@@ -330,3 +342,10 @@ INSERT INTO telegram_recipients (id, chat_id, label, is_active, restaurant_id) V
 ON CONFLICT (restaurant_id, chat_id) DO NOTHING;
 
 SELECT setval(pg_get_serial_sequence('telegram_recipients', 'id'), GREATEST((SELECT COALESCE(MAX(id), 1) FROM telegram_recipients), 1));
+
+INSERT INTO online_guest_limits (restaurant_id, limit_date, max_guests)
+SELECT r.id, d::date, 6
+FROM restaurants r
+CROSS JOIN unnest(ARRAY['2026-12-18', '2026-12-19', '2026-12-26', '2026-12-29', '2026-12-30']) AS d
+WHERE r.slug = 'harats'
+ON CONFLICT (restaurant_id, limit_date) DO NOTHING;

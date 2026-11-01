@@ -8,8 +8,8 @@ from booking_service import (
     format_time_range,
     reservation_payload,
 )
-from db import execute, query_all
-from phone_utils import normalize_phone, phones_for_sms_api
+from db import execute, execute_returning, query_all
+from phone_utils import normalize_phone, phone_validation_error, phones_for_sms_api
 from request_context import get_restaurant_id, set_restaurant_id
 from sms_service import send_sms, sms_enabled
 
@@ -47,7 +47,7 @@ def _message_for_event(event_type, reservation):
 
 def _notification_target(phone):
     normalized = normalize_phone(phone or "")
-    if not normalized:
+    if not normalized or phone_validation_error(normalized):
         return None
     return phones_for_sms_api(normalized)
 
@@ -68,6 +68,50 @@ def _reservation_by_id(reservation_id):
     return reservation_payload(row[0])
 
 
+_status_columns_ready = False
+
+
+def _ensure_status_columns():
+    global _status_columns_ready
+    if _status_columns_ready:
+        return
+    execute(
+        """
+        ALTER TABLE reservation_sms_notifications
+            ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'sent',
+            ADD COLUMN IF NOT EXISTS error TEXT
+        """
+    )
+    _status_columns_ready = True
+
+
+def _claim_notification(reservation_id, event_type, scheduled_for):
+    """Record the attempt before sending, so a failed SMS is never retried.
+
+    Returns the row id, or None if this (reservation, event, scheduled_for) was
+    already attempted. Reminders retried on every worker run used to resend the
+    same SMS every minute when the provider rejected the number.
+    """
+    _ensure_status_columns()
+    row = execute_returning(
+        """
+        INSERT INTO reservation_sms_notifications (reservation_id, event_type, scheduled_for, sent_at, status)
+        VALUES (%s, %s, %s, NOW(), 'sending')
+        ON CONFLICT (reservation_id, event_type, scheduled_for) DO NOTHING
+        RETURNING id
+        """,
+        (reservation_id, event_type, scheduled_for),
+    )
+    return row["id"] if row else None
+
+
+def _finish_notification(notification_id, status, error=None):
+    execute(
+        "UPDATE reservation_sms_notifications SET status = %s, error = %s WHERE id = %s",
+        (status, error, notification_id),
+    )
+
+
 def send_reservation_sms(event_type, reservation, scheduled_for=None):
     if not reservation:
         return {"sent": False, "reason": "missing_reservation"}
@@ -77,27 +121,25 @@ def send_reservation_sms(event_type, reservation, scheduled_for=None):
     if not target:
         return {"sent": False, "reason": "missing_phone"}
     message = _message_for_event(event_type, reservation)
+    notification_id = _claim_notification(int(reservation["id"]), event_type, scheduled_for)
+    if notification_id is None:
+        return {"sent": False, "reason": "already_attempted"}
     try:
         response = send_sms(target, message)
-        if not response.get("sent"):
-            return {"sent": False, "reason": "sms_disabled"}
-        execute(
-            """
-            INSERT INTO reservation_sms_notifications (reservation_id, event_type, scheduled_for, sent_at)
-            VALUES (%s, %s, %s, NOW())
-            ON CONFLICT (reservation_id, event_type, scheduled_for) DO NOTHING
-            """,
-            (int(reservation["id"]), event_type, scheduled_for),
-        )
-        return {"sent": True, "response": response}
     except Exception as exc:
+        _finish_notification(notification_id, "failed", str(exc)[:500])
         logger.exception(
-            "Reservation SMS send failed: event=%s reservation_id=%s error=%s",
+            "Reservation SMS send failed (will not retry): event=%s reservation_id=%s error=%s",
             event_type,
             reservation.get("id"),
             exc,
         )
         return {"sent": False, "reason": "send_failed"}
+    if not response.get("sent"):
+        _finish_notification(notification_id, "skipped", "sms disabled")
+        return {"sent": False, "reason": "sms_disabled"}
+    _finish_notification(notification_id, "sent")
+    return {"sent": True, "response": response}
 
 
 def _candidates_for_reminder():

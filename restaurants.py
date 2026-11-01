@@ -3,7 +3,7 @@ import json
 import os
 import re
 
-from booking_service import annotations_to_public, validate_floor_plan_annotations
+from booking_service import annotations_to_public, list_online_guest_limits, validate_floor_plan_annotations
 from db import execute, execute_returning, query_all, query_one
 
 _MENU_STORAGE_RE = re.compile(r"^\d+_[a-f0-9]{16}\.pdf$")
@@ -159,6 +159,10 @@ def list_restaurants_public():
         else:
             item["menuUrl"] = None
         item["setsChoiceIntervals"] = interval_by_id.get(rid, [])
+        item["onlineGuestLimits"] = [
+            {"date": x["date"], "maxGuests": x["maxGuests"]}
+            for x in list_online_guest_limits(rid, upcoming_only=True)
+        ]
         item["guestContact"] = guest_contact_public_dict(row)
         out.append(item)
     return out

@@ -10,6 +10,7 @@ import { AdminLogoutButton } from "@/components/admin/admin-logout-button"
 import { FloorPlanEditor } from "@/components/admin/floor-plan-editor"
 import type { FloorPlanAnnotations, ScheduleDay, Table, TableLayout, TableShape } from "@/app/admin/page"
 import { adminApi } from "@/lib/api"
+import { OnlineGuestLimitsSettings } from "@/components/admin/online-guest-limits-settings"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -1031,6 +1032,7 @@ export function AdminSettingsPageClient({
                   ))
                 )}
               </div>
+              <OnlineGuestLimitsSettings />
             </TabsContent>
 
             <TabsContent value="sets" className="space-y-6">
