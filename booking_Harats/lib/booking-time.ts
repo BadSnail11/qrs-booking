@@ -1,11 +1,24 @@
 import type { Booking } from "@/app/admin/page"
 import { bookingSlotBounds } from "@/lib/arrival-status"
 
-// Must match the backend defaults (SLOT_MINUTES, OPEN_ENDED_FROM, BUSINESS_DAY_END_HOUR);
-// the server re-checks every reservation, these only drive UI hints.
+// Must match the backend defaults (SLOT_MINUTES, OPEN_ENDED_FROM, BUSINESS_DAY_END_HOUR,
+// FIXED_SLOT_PERIODS); the server re-checks every reservation, these only drive UI hints.
 export const SLOT_MINUTES = 120
 export const OPEN_ENDED_FROM = "17:00"
 export const BUSINESS_DAY_END_HOUR = 6
+/** Inclusive business days with a strict 2h slot for every reservation, evenings included. */
+export const FIXED_SLOT_PERIODS: Array<[string, string]> = [["2026-11-12", "2026-11-29"]]
+
+function businessDate(start: Date): string {
+  const d = new Date(start.getTime() - BUSINESS_DAY_END_HOUR * 60 * 60 * 1000)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+export function inFixedSlotPeriod(start: Date): boolean {
+  const day = businessDate(start)
+  return FIXED_SLOT_PERIODS.some(([from, to]) => from <= day && day <= to)
+}
 
 function minutesOf(time: string): number {
   const [h, m] = time.split(":").map(Number)
@@ -21,7 +34,7 @@ export function isOpenEndedTime(time: string, openEndedFrom: string = OPEN_ENDED
 export function newSlotBounds(date: string, time: string): { start: Date; end: Date } {
   const start = new Date(`${date}T${time}:00`)
   let end = new Date(start.getTime() + SLOT_MINUTES * 60 * 1000)
-  if (isOpenEndedTime(time)) {
+  if (isOpenEndedTime(time) && !inFixedSlotPeriod(start)) {
     const dayEnd = new Date(start.getTime() - BUSINESS_DAY_END_HOUR * 60 * 60 * 1000)
     dayEnd.setHours(BUSINESS_DAY_END_HOUR, 0, 0, 0)
     dayEnd.setDate(dayEnd.getDate() + 1)

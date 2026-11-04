@@ -16,6 +16,7 @@ from booking_service import (
     get_reservation,
     get_schedule_for_date,
     get_slots_for_day,
+    in_fixed_slot_period,
     confirm_reservation,
     split_customer_name,
 )
@@ -142,7 +143,10 @@ def availability():
             "guests": guests,
             "guestLimit": guest_limit,
             "slotMinutes": SLOT_MINUTES,
-            "openEndedFrom": OPEN_ENDED_FROM.strftime("%H:%M"),
+            # null: no open-ended evening reservations on this date
+            "openEndedFrom": None
+            if in_fixed_slot_period(datetime.strptime(date_value, "%Y-%m-%d").replace(hour=12))
+            else OPEN_ENDED_FROM.strftime("%H:%M"),
             "schedule": result["schedule"],
             "slots": result["slots"],
         }
