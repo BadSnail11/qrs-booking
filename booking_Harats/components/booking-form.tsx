@@ -217,7 +217,7 @@ export function BookingForm({
   const [availableSlots, setAvailableSlots] = useState<AvailabilitySlot[]>([])
   const [availabilitySchedule, setAvailabilitySchedule] = useState<AvailabilitySchedule | null>(null)
   const [slotMinutes, setSlotMinutes] = useState(DEFAULT_SLOT_MINUTES)
-  const [openEndedFrom, setOpenEndedFrom] = useState(OPEN_ENDED_FROM)
+  const [openEndedFrom, setOpenEndedFrom] = useState<string | null>(OPEN_ENDED_FROM)
   const [reservationDetails, setReservationDetails] = useState<ReservationDetails | null>(null)
   const [reservationHistory, setReservationHistory] = useState<UserBookingHistoryItem[]>([])
   const [submitError, setSubmitError] = useState("")
@@ -315,7 +315,8 @@ export function BookingForm({
     () => availableSlots.find((slot) => slot.time === formData.time) || null,
     [availableSlots, formData.time]
   )
-  const selectedOpenEnded = Boolean(formData.time) && isOpenEndedTime(formData.time, openEndedFrom)
+  const selectedOpenEnded =
+    Boolean(formData.time) && openEndedFrom !== null && isOpenEndedTime(formData.time, openEndedFrom)
   const selectedEndTime = useMemo(
     () => (formData.time ? addMinutesToTime(formData.time, slotMinutes) : null),
     [formData.time, slotMinutes]
@@ -673,7 +674,7 @@ export function BookingForm({
         setGuestLimitDialog({ date: nextDate, maxGuests: data.guestLimit.maxGuests })
       }
       setSlotMinutes(data.slotMinutes ?? DEFAULT_SLOT_MINUTES)
-      setOpenEndedFrom(data.openEndedFrom ?? OPEN_ENDED_FROM)
+      setOpenEndedFrom(data.openEndedFrom === undefined ? OPEN_ENDED_FROM : data.openEndedFrom)
     } catch {
       setAvailableSlots([])
       setAvailabilitySchedule(null)

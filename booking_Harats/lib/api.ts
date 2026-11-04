@@ -94,7 +94,7 @@ export const userApi = {
       date: string
       guests: number
       slotMinutes?: number
-      openEndedFrom?: string
+      openEndedFrom?: string | null
       guestLimit?: { maxGuests: number } | null
       schedule: { weekday: number; dayName: string; isOpen: boolean; openTime: string | null; closeTime: string | null }
       slots: Array<{

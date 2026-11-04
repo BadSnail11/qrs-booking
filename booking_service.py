@@ -27,6 +27,22 @@ IIKO_MIN_LEAD_MINUTES = int(os.getenv("IIKO_MIN_LEAD_MINUTES", "2"))
 # taken until the business day ends (the next morning).
 OPEN_ENDED_FROM = time.fromisoformat(os.getenv("OPEN_ENDED_FROM", "17:00"))
 BUSINESS_DAY_END_HOUR = int(os.getenv("BUSINESS_DAY_END_HOUR", "6"))
+
+
+def _parse_date_periods(raw):
+    periods = []
+    for chunk in (raw or "").split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        start, _, end = chunk.partition(":")
+        periods.append((date.fromisoformat(start.strip()), date.fromisoformat((end or start).strip())))
+    return periods
+
+
+# Business days (inclusive) on which every reservation keeps the table for exactly
+# SLOT_MINUTES, evening ones included. Format: "YYYY-MM-DD:YYYY-MM-DD,..."
+FIXED_SLOT_PERIODS = _parse_date_periods(os.getenv("FIXED_SLOT_PERIODS", "2026-11-12:2026-11-29"))
 IIKO_OPEN_ENDED_MAX_MINUTES = int(os.getenv("IIKO_OPEN_ENDED_MAX_MINUTES", "480"))
 RESERVATION_LOCK_NAMESPACE = 73015
 MAX_PARTY_SIZE = 15
@@ -477,7 +493,19 @@ def _local_naive(dt):
     return dt
 
 
+def business_date(reservation_time):
+    """Calendar day the reservation belongs to (00:30 belongs to the previous evening)."""
+    return (_local_naive(reservation_time) - timedelta(hours=BUSINESS_DAY_END_HOUR)).date()
+
+
+def in_fixed_slot_period(reservation_time):
+    day = business_date(reservation_time)
+    return any(start <= day <= end for start, end in FIXED_SLOT_PERIODS)
+
+
 def is_open_ended(reservation_time):
+    if in_fixed_slot_period(reservation_time):
+        return False
     t = _local_naive(reservation_time).time()
     return t >= OPEN_ENDED_FROM or t < time(BUSINESS_DAY_END_HOUR)
 
@@ -489,6 +517,8 @@ def business_day_end(reservation_time):
 
 def reservation_end(reservation_time, duration_minutes=None):
     reservation_time = _local_naive(reservation_time)
+    if in_fixed_slot_period(reservation_time):
+        return reservation_time + timedelta(minutes=SLOT_MINUTES)
     end = reservation_time + timedelta(minutes=max(SLOT_MINUTES, duration_minutes or 0))
     if is_open_ended(reservation_time):
         end = max(end, business_day_end(reservation_time))
@@ -499,11 +529,16 @@ def reservation_end_sql(alias):
     """SQL twin of reservation_end() for a reservations row; constants are validated ints/times."""
     rt = f"{alias}.reservation_time"
     h = BUSINESS_DAY_END_HOUR
+    fixed = " OR ".join(
+        f"({rt} - interval '{h} hours')::date BETWEEN DATE '{start.isoformat()}' AND DATE '{end.isoformat()}'"
+        for start, end in FIXED_SLOT_PERIODS
+    ) or "FALSE"
     return (
+        f"CASE WHEN {fixed} THEN {rt} + interval '{SLOT_MINUTES} minutes' ELSE "
         f"GREATEST({rt} + make_interval(mins => GREATEST({alias}.duration_minutes, {SLOT_MINUTES})), "
         f"CASE WHEN {rt}::time >= TIME '{OPEN_ENDED_FROM.strftime('%H:%M')}' OR {rt}::time < TIME '{h:02d}:00' "
         f"THEN date_trunc('day', {rt} - interval '{h} hours') + interval '1 day' + interval '{h} hours' "
-        f"ELSE {rt} END)"
+        f"ELSE {rt} END) END"
     )
 
 
