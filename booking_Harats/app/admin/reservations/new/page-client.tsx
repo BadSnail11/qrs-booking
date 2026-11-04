@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
+import { getPhoneError } from "@/lib/phone"
 import { formatTimeRange, overlapsNewSlot } from "@/lib/booking-time"
 import { adminSetSelectItems, partySizeOptions } from "@/lib/booking-limits"
 
@@ -315,6 +316,11 @@ export function AdminCreateReservationPageClient({
     e.preventDefault()
     if (!date || !selectedOption) return
     setSubmitError("")
+    const phoneError = getPhoneError(formData.phone)
+    if (phoneError) {
+      setSubmitError(phoneError)
+      return
+    }
     const issue = await checkTableAvailability(selectedOption.tableIds, selectedOption.label)
     if (issue) {
       setWarningMessage(issue.message)
@@ -392,7 +398,7 @@ export function AdminCreateReservationPageClient({
                     <Label htmlFor="phone">Телефон</Label>
                     <div className="relative">
                       <Phone className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
-                      <Input id="phone" value={formData.phone} onChange={(e) => handleInputChange("phone", e.target.value)} placeholder="+7 999 123-45-67" required className="h-12 rounded-xl pl-11" />
+                      <Input id="phone" value={formData.phone} onChange={(e) => handleInputChange("phone", e.target.value)} placeholder="+375 29 123-45-67" required className="h-12 rounded-xl pl-11" />
                     </div>
                   </div>
                   <div className="space-y-1.5">

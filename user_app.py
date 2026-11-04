@@ -5,20 +5,23 @@ from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 
 from booking_service import (
+    GuestLimitExceeded,
     MAX_PARTY_SIZE,
+    online_guest_limit_for,
     OPEN_ENDED_FROM,
     SLOT_MINUTES,
     build_customer_name,
     combine_date_time,
     create_reservation,
     get_reservation,
+    get_schedule_for_date,
     get_slots_for_day,
     confirm_reservation,
     split_customer_name,
 )
 
 logger = logging.getLogger(__name__)
-from phone_utils import normalize_phone
+from phone_utils import phone_validation_error
 from phone_verification_service import (
     booking_phone_verified,
     phone_already_confirmed,
@@ -123,11 +126,21 @@ def availability():
             {"error": f"date (YYYY-MM-DD) and guests (1–{MAX_PARTY_SIZE}) are required"}
         ), 400
 
-    result = get_slots_for_day(date_value, guests)
+    try:
+        limit = online_guest_limit_for(get_restaurant_id(), datetime.strptime(date_value, "%Y-%m-%d").date())
+    except ValueError:
+        return jsonify({"error": "date must be YYYY-MM-DD"}), 400
+    guest_limit = None
+    if limit is not None and guests > limit:
+        guest_limit = {"maxGuests": limit}
+        result = {"schedule": get_schedule_for_date(date_value), "slots": []}
+    else:
+        result = get_slots_for_day(date_value, guests)
     return jsonify(
         {
             "date": date_value,
             "guests": guests,
+            "guestLimit": guest_limit,
             "slotMinutes": SLOT_MINUTES,
             "openEndedFrom": OPEN_ENDED_FROM.strftime("%H:%M"),
             "schedule": result["schedule"],
@@ -142,12 +155,13 @@ def phone_status():
     phone = body.get("phone")
     if not phone:
         return jsonify({"error": "phone is required"}), 400
+    phone_error = phone_validation_error(phone)
+    if phone_error:
+        return jsonify({"error": phone_error}), 400
     try:
         status = phone_already_confirmed(get_restaurant_id(), phone)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
-    if not normalize_phone(phone):
-        return jsonify({"error": "Некорректный номер телефона"}), 400
     return jsonify(status)
 
 
@@ -200,8 +214,9 @@ def create_booking():
     if missing:
         return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
-    if not normalize_phone(phone):
-        return jsonify({"error": "Некорректный номер телефона"}), 400
+    phone_error = phone_validation_error(phone)
+    if phone_error:
+        return jsonify({"error": phone_error}), 400
     if not booking_phone_verified(
         get_restaurant_id(),
         phone,
@@ -250,6 +265,8 @@ def create_booking():
             offer_accepted_at=datetime.now(timezone.utc),
             offer_document=offer_document or "oferta_mise_v3.pdf",
         )
+    except GuestLimitExceeded as exc:
+        return jsonify({"error": str(exc), "code": "guest_limit", "maxGuests": exc.max_guests, "phone": exc.phone}), 409
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 

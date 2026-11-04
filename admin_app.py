@@ -17,6 +17,9 @@ from booking_service import (
     create_reservation,
     split_customer_name,
     create_sets_choice_interval,
+    delete_online_guest_limit,
+    list_online_guest_limits,
+    upsert_online_guest_limit,
     delete_schedule_date_override,
     delete_sets_choice_interval,
     get_reservation,
@@ -69,6 +72,7 @@ from telegram_service import (
     notify_pending_reservation,
 )
 from visitor_service import list_visitors, upsert_visitor
+from phone_utils import phone_validation_error
 
 app = Flask(__name__)
 CORS(app)
@@ -419,6 +423,28 @@ def remove_sets_choice_interval(interval_id):
     return jsonify({"message": "deleted"})
 
 
+@app.get("/api/v1/settings/online-guest-limits")
+def get_online_guest_limits():
+    return jsonify(list_online_guest_limits())
+
+
+@app.post("/api/v1/settings/online-guest-limits")
+def post_online_guest_limit():
+    body = request.get_json(silent=True) or {}
+    try:
+        row = upsert_online_guest_limit(body.get("date", ""), body.get("maxGuests", 0))
+    except (TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(row), 201
+
+
+@app.delete("/api/v1/settings/online-guest-limits/<int:limit_id>")
+def remove_online_guest_limit(limit_id):
+    if not delete_online_guest_limit(limit_id):
+        return jsonify({"error": "Limit not found"}), 404
+    return jsonify({"message": "deleted"})
+
+
 @app.get("/api/v1/settings/public-guest-contact")
 def get_public_guest_contact():
     row = get_restaurant_by_id(get_restaurant_id())
@@ -720,6 +746,10 @@ def create_admin_reservation():
         missing.append("guests")
     if missing:
         return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
+    if (body.get("phone") or "").strip():
+        phone_error = phone_validation_error(body["phone"])
+        if phone_error:
+            return jsonify({"error": phone_error}), 400
 
     try:
         reservation = create_reservation(
@@ -764,6 +794,10 @@ def edit_reservation(reservation_id):
             ),
             400,
         )
+    if (body.get("phone") or "").strip():
+        phone_error = phone_validation_error(body["phone"])
+        if phone_error:
+            return jsonify({"error": phone_error}), 400
 
     try:
         updated = update_reservation(

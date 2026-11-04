@@ -75,7 +75,10 @@ export type PublicRestaurant = {
   menuUrl: string | null
   guestContact: GuestContactPublic
   setsChoiceIntervals: SetsChoiceInterval[]
+  onlineGuestLimits?: OnlineGuestLimit[]
 }
+
+export type OnlineGuestLimit = { date: string; maxGuests: number }
 
 export const userApi = {
   listRestaurants() {
@@ -92,6 +95,7 @@ export const userApi = {
       guests: number
       slotMinutes?: number
       openEndedFrom?: string
+      guestLimit?: { maxGuests: number } | null
       schedule: { weekday: number; dayName: string; isOpen: boolean; openTime: string | null; closeTime: string | null }
       slots: Array<{
         time: string
@@ -216,6 +220,20 @@ export const adminApi = {
       ADMIN_API_URL,
       "/v1/settings/sets-choice-intervals"
     )
+  },
+  getOnlineGuestLimits() {
+    return request<Array<OnlineGuestLimit & { id: number }>>(ADMIN_API_URL, "/v1/settings/online-guest-limits")
+  },
+  upsertOnlineGuestLimit(body: OnlineGuestLimit) {
+    return request<OnlineGuestLimit & { id: number }>(ADMIN_API_URL, "/v1/settings/online-guest-limits", {
+      method: "POST",
+      body: JSON.stringify(body),
+    })
+  },
+  deleteOnlineGuestLimit(id: number) {
+    return request<{ message: string }>(ADMIN_API_URL, `/v1/settings/online-guest-limits/${id}`, {
+      method: "DELETE",
+    })
   },
   createSetsChoiceInterval(body: { dateStart: string; dateEnd: string }) {
     return request<{ id: number; dateStart: string; dateEnd: string }>(
