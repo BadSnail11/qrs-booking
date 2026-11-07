@@ -1,0 +1,11 @@
+.venv
+__pycache__
+*.pyc
+.git
+.env
+booking_Harats/node_modules
+booking_Harats/.next
+*.log
+.DS_Store
+sql
+data

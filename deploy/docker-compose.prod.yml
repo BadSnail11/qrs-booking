@@ -1,0 +1,225 @@
+# Production stack for Oracle Cloud Always Free VM.
+# Usage (from repo root):
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: qrs-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      IIKO_API_LOGIN: ${IIKO_API_LOGIN:-}
+      IIKO_ORGANIZATION_ID: ${IIKO_ORGANIZATION_ID:-}
+      IIKO_TERMINAL_GROUP_ID: ${IIKO_TERMINAL_GROUP_ID:-}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ../sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ../sql/02_iiko_credentials.sh:/docker-entrypoint-initdb.d/02_iiko_credentials.sh:ro
+      - ../sql/03_historical_data.sql:/docker-entrypoint-initdb.d/03_historical_data.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - qrs
+
+  user-app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        APP_MODULE: user_app:app
+        APP_PORT: 8000
+    container_name: qrs-user-app
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      APP_PORT: 8000
+      MENU_UPLOAD_DIR: /data/menus
+      OPEN_HOUR: ${OPEN_HOUR:-11}
+      CLOSE_HOUR: ${CLOSE_HOUR:-22}
+      SLOT_MINUTES: ${SLOT_MINUTES:-120}
+      RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      ADMIN_WEB_URL: ${ADMIN_WEB_URL}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      RESEND_FROM_NAME: ${RESEND_FROM_NAME:-QRS Booking}
+      SMS_CENTRE_LOGIN: ${SMS_CENTRE_LOGIN:-}
+      SMS_CENTRE_PASSWORD: ${SMS_CENTRE_PASSWORD:-}
+      SMS_CENTRE_SENDER: ${SMS_CENTRE_SENDER:-booking.mise.by}
+      PHONE_VERIFICATION_SALT: ${PHONE_VERIFICATION_SALT}
+    volumes:
+      - menu_uploads:/data/menus
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - qrs
+
+  admin-app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        APP_MODULE: admin_app:app
+        APP_PORT: 8001
+    container_name: qrs-admin-app
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      APP_PORT: 8001
+      MENU_UPLOAD_DIR: /data/menus
+      SUPERADMIN_LOGIN: ${SUPERADMIN_LOGIN}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
+      OPEN_HOUR: ${OPEN_HOUR:-11}
+      CLOSE_HOUR: ${CLOSE_HOUR:-22}
+      SLOT_MINUTES: ${SLOT_MINUTES:-120}
+      RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      ADMIN_WEB_URL: ${ADMIN_WEB_URL}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      RESEND_FROM_NAME: ${RESEND_FROM_NAME:-QRS Booking}
+      SMS_CENTRE_LOGIN: ${SMS_CENTRE_LOGIN:-}
+      SMS_CENTRE_PASSWORD: ${SMS_CENTRE_PASSWORD:-}
+      SMS_CENTRE_SENDER: ${SMS_CENTRE_SENDER:-booking.mise.by}
+    volumes:
+      - menu_uploads:/data/menus
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - qrs
+
+  sms-reminders:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        APP_MODULE: user_app:app
+        APP_PORT: 8000
+    container_name: qrs-sms-reminders
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      SLOT_MINUTES: ${SLOT_MINUTES:-120}
+      RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
+      SMS_CENTRE_LOGIN: ${SMS_CENTRE_LOGIN:-}
+      SMS_CENTRE_PASSWORD: ${SMS_CENTRE_PASSWORD:-}
+      SMS_CENTRE_SENDER: ${SMS_CENTRE_SENDER:-booking.mise.by}
+      SMS_REMINDER_HOURS_BEFORE: ${SMS_REMINDER_HOURS_BEFORE:-2}
+      SMS_REMINDER_INTERVAL_SECONDS: ${SMS_REMINDER_INTERVAL_SECONDS:-60}
+    command:
+      - sh
+      - -c
+      - |
+        echo "SMS reminder worker started (interval $${SMS_REMINDER_INTERVAL_SECONDS}s)"
+        while true; do
+          python send_sms_reminders.py || true
+          sleep "$${SMS_REMINDER_INTERVAL_SECONDS}"
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - qrs
+
+  iiko-sync:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        APP_MODULE: user_app:app
+        APP_PORT: 8000
+    container_name: qrs-iiko-sync
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      SLOT_MINUTES: ${SLOT_MINUTES:-120}
+      RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
+      IIKO_SYNC_INTERVAL_SECONDS: ${IIKO_SYNC_INTERVAL_SECONDS:-300}
+      IIKO_SYNC_DAYS_AHEAD: ${IIKO_SYNC_DAYS_AHEAD:-14}
+    command:
+      - sh
+      - -c
+      - |
+        echo "iiko sync worker started (interval $${IIKO_SYNC_INTERVAL_SECONDS}s)"
+        while true; do
+          python retry_iiko_sync.py || true
+          sleep "$${IIKO_SYNC_INTERVAL_SECONDS}"
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - qrs
+
+  booking-harats:
+    build:
+      context: ../booking_Harats
+      dockerfile: Dockerfile
+    container_name: qrs-booking-harats
+    restart: unless-stopped
+    environment:
+      ADMIN_INTERNAL_URL: http://admin-app:8001
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET}
+      NEXT_PUBLIC_USER_API_URL: /api/user
+      NEXT_PUBLIC_ADMIN_API_URL: /api/admin
+    depends_on:
+      user-app:
+        condition: service_started
+      admin-app:
+        condition: service_started
+    networks:
+      - qrs
+
+  caddy:
+    image: caddy:2
+    container_name: qrs-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - booking-harats
+    networks:
+      - qrs
+
+networks:
+  qrs:
+    driver: bridge
+
+volumes:
+  pg_data:
+  menu_uploads:
+  caddy_data:
+  caddy_config:

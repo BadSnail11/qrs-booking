@@ -1,0 +1,14 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode gzip
+
+	# Large menu PDF uploads via /api/admin proxy
+	request_body {
+		max_size 50MB
+	}
+
+	reverse_proxy booking-harats:3000
+}
