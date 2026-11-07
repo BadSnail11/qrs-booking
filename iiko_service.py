@@ -97,15 +97,36 @@ _token_cache: dict[str, tuple[str, float]] = {}
 
 
 def _get_token(api_login: str) -> str:
-    """Get a valid access token, using cache if not expired."""
+    """Get a valid access token, using cache if not expired.
+
+    iiko disabled /api/1/access_token for new keys; auth is
+    POST /api/v2/access_token with apiKey + appId + clientSecret.
+    The organization key (formerly apiLogin) is stored as iiko_api_login.
+    """
     cached = _token_cache.get(api_login)
     if cached:
         token, expires_at = cached
         if time.time() < expires_at - 60:  # refresh 1 min early
             return token
 
+    app_id = os.getenv("IIKO_APP_ID", "").strip()
+    client_secret = os.getenv("IIKO_CLIENT_SECRET", "").strip()
+    if not app_id or not client_secret:
+        raise RuntimeError(
+            "iiko auth requires IIKO_APP_ID and IIKO_CLIENT_SECRET "
+            "(portal app credentials for /api/v2/access_token)"
+        )
+
     try:
-        data = _api_post("/api/1/access_token", {"apiLogin": api_login}, auth=False)
+        data = _api_post(
+            "/api/v2/access_token",
+            {
+                "apiKey": api_login,
+                "appId": app_id,
+                "clientSecret": client_secret,
+            },
+            auth=False,
+        )
     except IikoBadRequest as e:
         # Auth failures (e.g. blocked apiLogin) affect the whole login, not one
         # request — never mark individual reservations as rejected because of them.
@@ -113,7 +134,7 @@ def _get_token(api_login: str) -> str:
     token = data.get("token")
     if not token:
         error_desc = data.get("errorDescription") or str(data)
-        logger.error("iiko auth failed for apiLogin %s...: %s", api_login[:6], error_desc)
+        logger.error("iiko auth failed for apiKey %s...: %s", api_login[:6], error_desc)
         raise RuntimeError(f"iiko auth failed: {error_desc}")
     _token_cache[api_login] = (token, time.time() + 3500)  # ~58 min
     return token
@@ -163,9 +184,10 @@ def _api_post(path: str, body: dict, auth: bool = True, token: str | None = None
 
     if not resp.ok:
         logger.error("iiko API %s returned %s: %s", path, resp.status_code, data)
+        error_desc = data.get("errorDescription") or str(data)
         if resp.status_code == 400:
-            error_desc = data.get("errorDescription") or str(data)
             raise IikoBadRequest(f"iiko API {path} error 400: {error_desc}")
+        raise RuntimeError(f"iiko API {path} error {resp.status_code}: {error_desc}")
 
     return data
 

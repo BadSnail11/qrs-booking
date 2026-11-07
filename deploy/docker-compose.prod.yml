@@ -18,7 +18,8 @@ services:
       - pg_data:/var/lib/postgresql/data
       - ../sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
       - ../sql/02_iiko_credentials.sh:/docker-entrypoint-initdb.d/02_iiko_credentials.sh:ro
-      - ../sql/03_historical_data.sql:/docker-entrypoint-initdb.d/03_historical_data.sql:ro
+      # No 03_historical_data.sql mount: missing file → Docker creates a directory
+      # and init fails ("Is a directory"). Load dumps manually if needed.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -57,6 +58,8 @@ services:
       SMS_CENTRE_PASSWORD: ${SMS_CENTRE_PASSWORD:-}
       SMS_CENTRE_SENDER: ${SMS_CENTRE_SENDER:-booking.mise.by}
       PHONE_VERIFICATION_SALT: ${PHONE_VERIFICATION_SALT}
+      IIKO_APP_ID: ${IIKO_APP_ID:-}
+      IIKO_CLIENT_SECRET: ${IIKO_CLIENT_SECRET:-}
     volumes:
       - menu_uploads:/data/menus
     depends_on:
@@ -96,6 +99,8 @@ services:
       SMS_CENTRE_LOGIN: ${SMS_CENTRE_LOGIN:-}
       SMS_CENTRE_PASSWORD: ${SMS_CENTRE_PASSWORD:-}
       SMS_CENTRE_SENDER: ${SMS_CENTRE_SENDER:-booking.mise.by}
+      IIKO_APP_ID: ${IIKO_APP_ID:-}
+      IIKO_CLIENT_SECRET: ${IIKO_CLIENT_SECRET:-}
     volumes:
       - menu_uploads:/data/menus
     depends_on:
@@ -158,6 +163,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       SLOT_MINUTES: ${SLOT_MINUTES:-120}
       RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
+      IIKO_APP_ID: ${IIKO_APP_ID:-}
+      IIKO_CLIENT_SECRET: ${IIKO_CLIENT_SECRET:-}
       IIKO_SYNC_INTERVAL_SECONDS: ${IIKO_SYNC_INTERVAL_SECONDS:-300}
       IIKO_SYNC_DAYS_AHEAD: ${IIKO_SYNC_DAYS_AHEAD:-14}
     command:

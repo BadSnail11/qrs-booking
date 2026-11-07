@@ -89,6 +89,8 @@ docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod dow
 ## Notes
 
 - **Ampere (ARM)** images for Postgres / Python / Node / Caddy are multi-arch; no special tags needed.
-- DB init SQL runs only on the **first** empty Postgres volume. Changing `IIKO_*` later does not re-seed automatically.
+- DB init SQL runs only on the **first** empty Postgres volume. Changing `IIKO_API_LOGIN` / org IDs later does not re-seed automatically.
+- iiko auth needs **`IIKO_APP_ID` + `IIKO_CLIENT_SECRET`** (developer portal) plus the organization API key in `IIKO_API_LOGIN` / DB.
+- If Postgres ever failed with `03_historical_data.sql: Is a directory`, remove that path on the host (`rm -rf sql/03_historical_data.sql`) before a fresh volume init.
 - Keep `deploy/.env.prod` only on the server; it is gitignored.
 - Free-tier quotas and account verification are controlled by Oracle; if create-instance fails, check Always Free capacity in your home region.
