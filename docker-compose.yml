@@ -15,7 +15,8 @@ services:
       - pg_data:/var/lib/postgresql/data
       - ./sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
       - ./sql/02_iiko_credentials.sh:/docker-entrypoint-initdb.d/02_iiko_credentials.sh:ro
-      - ./sql/03_historical_data.sql:/docker-entrypoint-initdb.d/03_historical_data.sql:ro
+      # Do not bind-mount sql/03_historical_data.sql: if the file is missing,
+      # Docker creates a directory and Postgres init fails with "Is a directory".
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U qrs_user -d qrs_booking"]
       interval: 5s
@@ -51,6 +52,8 @@ services:
       SMS_CENTRE_PASSWORD: ${SMS_CENTRE_PASSWORD:-}
       SMS_CENTRE_SENDER: ${SMS_CENTRE_SENDER:-booking.mise.by}
       PHONE_VERIFICATION_SALT: ${PHONE_VERIFICATION_SALT:-mise-sms-salt}
+      IIKO_APP_ID: ${IIKO_APP_ID:-}
+      IIKO_CLIENT_SECRET: ${IIKO_CLIENT_SECRET:-}
     volumes:
       - menu_uploads:/data/menus
     depends_on:
@@ -89,6 +92,8 @@ services:
       SMS_CENTRE_LOGIN: ${SMS_CENTRE_LOGIN:-}
       SMS_CENTRE_PASSWORD: ${SMS_CENTRE_PASSWORD:-}
       SMS_CENTRE_SENDER: ${SMS_CENTRE_SENDER:-booking.mise.by}
+      IIKO_APP_ID: ${IIKO_APP_ID:-}
+      IIKO_CLIENT_SECRET: ${IIKO_CLIENT_SECRET:-}
     volumes:
       - menu_uploads:/data/menus
     depends_on:
@@ -148,6 +153,8 @@ services:
       DB_PASSWORD: qrs_pass
       SLOT_MINUTES: 120
       RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
+      IIKO_APP_ID: ${IIKO_APP_ID:-}
+      IIKO_CLIENT_SECRET: ${IIKO_CLIENT_SECRET:-}
       IIKO_SYNC_INTERVAL_SECONDS: ${IIKO_SYNC_INTERVAL_SECONDS:-300}
       IIKO_SYNC_DAYS_AHEAD: ${IIKO_SYNC_DAYS_AHEAD:-14}
     command:
