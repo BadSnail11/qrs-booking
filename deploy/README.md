@@ -97,24 +97,32 @@ docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod dow
 
 ## Moving the database to Supabase
 
-1. In Supabase: **Project Settings → Database → Connection string**, take the
-   **Session pooler** (port **5432**) or the direct connection. Not the
+The Supabase project already holds the QRS platform tables in `public`
+(`restaurants`, `restaurant_reservations`, …). The booking app goes into its own
+schema **`booking`**; nothing in `public` is read or changed.
+
+1. Take the **Session pooler** connection string (port **5432**). Not the
    transaction pooler (6543): reservation locking needs session advisory locks.
 2. Copy the data (app services are stopped during the copy, Postgres keeps running):
 
    ```bash
-   SUPABASE_DB_URL='postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require' \
+   SUPABASE_DB_URL='postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres' \
      bash deploy/scripts/migrate-to-supabase.sh
    ```
 
-   It dumps the local DB to `deploy/backups/`, restores into Supabase and
-   compares row counts table by table; it refuses to continue on a mismatch.
-3. Set `DATABASE_URL` in `deploy/.env.prod` to the same string and run `bash deploy/scripts/update.sh`.
-4. Check what the app is connected to:
+   It backs up the local DB to `deploy/backups/`, copies tables → rows →
+   constraints into `booking`, applies migrations and compares row counts table
+   by table; on a mismatch it stops and tells you not to switch.
+3. In `deploy/.env.prod` set `DATABASE_URL` (same string), `DB_SSLMODE=require`,
+   `DB_SCHEMA=booking`, then `bash deploy/scripts/update.sh`.
+4. Check what the app is connected to (`schema=booking`, `ssl=True`, row counts):
 
    ```bash
    docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod exec admin-app python db_check.py
    ```
+
+Supabase is in eu-west-1 (Ireland): every query costs a network round trip, so
+a VM in a nearby region keeps the booking form fast.
 
 ## Importing reserves from iiko
 

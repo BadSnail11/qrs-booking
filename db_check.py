@@ -30,19 +30,20 @@ def main():
     print("Configured:", configured_target())
     info = query_one(
         """
-        SELECT current_database() AS db, current_user AS usr, version() AS version,
+        SELECT current_database() AS db, current_schema() AS schema, current_user AS usr, version() AS version,
                inet_server_addr()::text AS server_ip,
                (SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()) AS ssl
         """
     )
-    print(f"Connected: db={info['db']} user={info['usr']} server_ip={info['server_ip'] or 'local socket'} ssl={info['ssl']}")
+    print(f"Connected: db={info['db']} schema={info['schema']} user={info['usr']} "
+          f"server_ip={info['server_ip'] or 'local socket'} ssl={info['ssl']}")
     print("Server:", info["version"].split(",")[0])
     if "supabase" in configured_target().lower() or "pooler" in configured_target().lower():
         print("  → this is Supabase")
 
     present = {
         r["table_name"]
-        for r in query_all("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+        for r in query_all("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()")
     }
     print("\nRows per table:")
     for t in TABLES:

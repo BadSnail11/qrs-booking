@@ -45,6 +45,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DATABASE_URL: ${DATABASE_URL:-}
       DB_SSLMODE: ${DB_SSLMODE:-}
+      DB_SCHEMA: ${DB_SCHEMA:-}
       DB_POOL_MAX: ${DB_POOL_MAX:-10}
       APP_PORT: 8000
       MENU_UPLOAD_DIR: /data/menus
@@ -88,6 +89,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DATABASE_URL: ${DATABASE_URL:-}
       DB_SSLMODE: ${DB_SSLMODE:-}
+      DB_SCHEMA: ${DB_SCHEMA:-}
       DB_POOL_MAX: ${DB_POOL_MAX:-10}
       APP_PORT: 8001
       MENU_UPLOAD_DIR: /data/menus
@@ -132,6 +134,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DATABASE_URL: ${DATABASE_URL:-}
       DB_SSLMODE: ${DB_SSLMODE:-}
+      DB_SCHEMA: ${DB_SCHEMA:-}
       DB_POOL_MAX: ${DB_POOL_MAX:-10}
       SLOT_MINUTES: ${SLOT_MINUTES:-120}
       RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
@@ -172,6 +175,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DATABASE_URL: ${DATABASE_URL:-}
       DB_SSLMODE: ${DB_SSLMODE:-}
+      DB_SCHEMA: ${DB_SCHEMA:-}
       DB_POOL_MAX: ${DB_POOL_MAX:-10}
       SLOT_MINUTES: ${SLOT_MINUTES:-120}
       RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}

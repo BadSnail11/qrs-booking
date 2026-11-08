@@ -4,11 +4,30 @@ from contextlib import contextmanager
 
 import psycopg2
 from psycopg2 import pool as pg_pool
+from psycopg2 import sql as pg_sql
+from psycopg2.extensions import connection as _PgConnection
 from psycopg2.extras import RealDictCursor
 
 _pool = None
 _pool_slots = None
 _pool_lock = threading.Lock()
+
+
+class _SchemaConnection(_PgConnection):
+    """Sets search_path to DB_SCHEMA for the whole session.
+
+    On Supabase the app lives in its own schema (booking) next to the QRS
+    platform tables in public; SET is used rather than the `options` startup
+    parameter because the Supabase pooler does not forward it.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        schema = os.getenv("DB_SCHEMA", "").strip()
+        if schema:
+            with self.cursor() as cur:
+                cur.execute(pg_sql.SQL("SET search_path TO {}").format(pg_sql.Identifier(schema)))
+            self.commit()
 
 
 def _connect_kwargs():
@@ -33,6 +52,7 @@ def _connect_kwargs():
     if sslmode:
         kwargs["sslmode"] = sslmode
     kwargs["connect_timeout"] = int(os.getenv("DB_CONNECT_TIMEOUT", "10"))
+    kwargs["connection_factory"] = _SchemaConnection
     return kwargs
 
 
