@@ -94,3 +94,34 @@ docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod dow
 - If Postgres ever failed with `03_historical_data.sql: Is a directory`, remove that path on the host (`rm -rf sql/03_historical_data.sql`) before a fresh volume init.
 - Keep `deploy/.env.prod` only on the server; it is gitignored.
 - Free-tier quotas and account verification are controlled by Oracle; if create-instance fails, check Always Free capacity in your home region.
+
+## Moving the database to Supabase
+
+1. In Supabase: **Project Settings → Database → Connection string**, take the
+   **Session pooler** (port **5432**) or the direct connection. Not the
+   transaction pooler (6543): reservation locking needs session advisory locks.
+2. Copy the data (app services are stopped during the copy, Postgres keeps running):
+
+   ```bash
+   SUPABASE_DB_URL='postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require' \
+     bash deploy/scripts/migrate-to-supabase.sh
+   ```
+
+   It dumps the local DB to `deploy/backups/`, restores into Supabase and
+   compares row counts table by table; it refuses to continue on a mismatch.
+3. Set `DATABASE_URL` in `deploy/.env.prod` to the same string and run `bash deploy/scripts/update.sh`.
+4. Check what the app is connected to:
+
+   ```bash
+   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod exec admin-app python db_check.py
+   ```
+
+## Importing reserves from iiko
+
+Needs `IIKO_APP_ID` / `IIKO_CLIENT_SECRET`. Writes into whatever database the app uses (Supabase after step 3):
+
+```bash
+C="docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod"
+$C exec iiko-sync python import_iiko_reserves.py --from 2026-07-01 --to 2027-01-01 --dry-run
+$C exec iiko-sync python import_iiko_reserves.py --from 2026-07-01 --to 2027-01-01
+```
