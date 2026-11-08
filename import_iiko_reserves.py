@@ -14,6 +14,7 @@ import logging
 import random
 import string
 import sys
+import time
 from collections import Counter
 from datetime import date, datetime, timedelta
 
@@ -25,6 +26,23 @@ from retry_iiko_sync import _try_link_existing
 logger = logging.getLogger("import_iiko_reserves")
 
 CHUNK_DAYS = 7
+REQUEST_PAUSE_SECONDS = 1.0
+RATE_LIMIT_RETRIES = 5
+
+
+def _with_rate_limit_retry(call):
+    """iiko answers 429 'Too many requests' after a burst of calls; wait and retry."""
+    for attempt in range(1, RATE_LIMIT_RETRIES + 1):
+        try:
+            result = call()
+            time.sleep(REQUEST_PAUSE_SECONDS)
+            return result
+        except RuntimeError as e:
+            if "429" not in str(e) or attempt == RATE_LIMIT_RETRIES:
+                raise
+            wait = 15 * attempt
+            logger.warning("iiko rate limit, retrying in %ss (%s/%s)", wait, attempt, RATE_LIMIT_RETRIES)
+            time.sleep(wait)
 CANCELLED = ("Cancelled", "Deleted")
 
 
@@ -75,11 +93,11 @@ def fetch_reserves(restaurant_id, day_from, day_to):
     """All reserves touching the range, keyed by iiko id (chunks overlap at edges)."""
     found = {}
     for start, end in _chunks(day_from, day_to):
-        rows = iiko_service.get_reserves_workload(
+        rows = _with_rate_limit_retry(lambda: iiko_service.get_reserves_workload(
             restaurant_id,
             f"{start.isoformat()}T00:00:00.000",
             f"{end.isoformat()}T23:59:59.000",
-        )
+        ))
         for r in rows:
             if r.get("id"):
                 found[r["id"]] = r
@@ -90,7 +108,11 @@ def fetch_reserves(restaurant_id, day_from, day_to):
 def import_restaurant(restaurant_id, day_from, day_to, dry_run):
     stats = Counter()
     workload = fetch_reserves(restaurant_id, day_from, day_to)
-    details = iiko_service.get_reserves_status(restaurant_id, list(workload))
+    ids = list(workload)
+    details = {}
+    for i in range(0, len(ids), 50):
+        batch = ids[i:i + 50]
+        details.update(_with_rate_limit_retry(lambda: iiko_service.get_reserves_status(restaurant_id, batch)))
     linked = {
         r["iiko_reserve_id"]
         for r in query_all(
