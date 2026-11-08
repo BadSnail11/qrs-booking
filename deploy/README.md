@@ -94,3 +94,42 @@ docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod dow
 - If Postgres ever failed with `03_historical_data.sql: Is a directory`, remove that path on the host (`rm -rf sql/03_historical_data.sql`) before a fresh volume init.
 - Keep `deploy/.env.prod` only on the server; it is gitignored.
 - Free-tier quotas and account verification are controlled by Oracle; if create-instance fails, check Always Free capacity in your home region.
+
+## Moving the database to Supabase
+
+The Supabase project already holds the QRS platform tables in `public`
+(`restaurants`, `restaurant_reservations`, …). The booking app goes into its own
+schema **`booking`**; nothing in `public` is read or changed.
+
+1. Take the **Session pooler** connection string (port **5432**). Not the
+   transaction pooler (6543): reservation locking needs session advisory locks.
+2. Copy the data (app services are stopped during the copy, Postgres keeps running):
+
+   ```bash
+   SUPABASE_DB_URL='postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres' \
+     bash deploy/scripts/migrate-to-supabase.sh
+   ```
+
+   It backs up the local DB to `deploy/backups/`, copies tables → rows →
+   constraints into `booking`, applies migrations and compares row counts table
+   by table; on a mismatch it stops and tells you not to switch.
+3. In `deploy/.env.prod` set `DATABASE_URL` (same string), `DB_SSLMODE=require`,
+   `DB_SCHEMA=booking`, then `bash deploy/scripts/update.sh`.
+4. Check what the app is connected to (`schema=booking`, `ssl=True`, row counts):
+
+   ```bash
+   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod exec admin-app python db_check.py
+   ```
+
+Supabase is in eu-west-1 (Ireland): every query costs a network round trip, so
+a VM in a nearby region keeps the booking form fast.
+
+## Importing reserves from iiko
+
+Needs `IIKO_APP_ID` / `IIKO_CLIENT_SECRET`. Writes into whatever database the app uses (Supabase after step 3):
+
+```bash
+C="docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod"
+$C exec iiko-sync python import_iiko_reserves.py --from 2026-07-01 --to 2027-01-01 --dry-run
+$C exec iiko-sync python import_iiko_reserves.py --from 2026-07-01 --to 2027-01-01
+```

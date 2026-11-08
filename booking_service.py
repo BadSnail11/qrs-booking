@@ -1099,20 +1099,56 @@ def has_reservation_conflict(table_ids, reservation_time, exclude_reservation_id
     )
 
 
+def load_table_occupancy(window_start, window_end):
+    """Busy intervals per table in [window_start, window_end): reservations and blocks.
+
+    Two queries for any number of tables/slots: per-table, per-slot queries took
+    minutes against a remote database (Supabase). Same overlap rules as
+    get_table_conflict_details / get_table_block_details.
+    """
+    busy = {}
+    for row in query_all(
+        f"""
+        SELECT rt.table_id, r.reservation_time AS start, {reservation_end_sql("r")} AS end
+        FROM reservations r
+        JOIN reservation_tables rt ON rt.reservation_id = r.id
+        WHERE r.restaurant_id = %s
+          AND r.status IN ('pending', 'confirmed')
+          AND r.reservation_time < %s
+          AND {reservation_end_sql("r")} > %s
+        """,
+        (get_restaurant_id(), window_end, window_start),
+    ):
+        busy.setdefault(row["table_id"], []).append((row["start"], row["end"]))
+    for row in query_all(
+        """
+        SELECT tb.table_id, tb.start_time AS start, tb.end_time AS end
+        FROM table_blocks tb
+        JOIN tables t ON t.id = tb.table_id
+        WHERE t.restaurant_id = %s AND tb.start_time < %s AND tb.end_time > %s
+        """,
+        (get_restaurant_id(), window_end, window_start),
+    ):
+        busy.setdefault(row["table_id"], []).append((_local_naive(row["start"]), _local_naive(row["end"])))
+    return busy
+
+
+def free_tables_at(reservation_time, tables, occupancy):
+    start, end = reservation_window(reservation_time)
+    return [
+        t for t in tables
+        if not any(b_start < end and b_end > start for b_start, b_end in occupancy.get(t["id"], ()))
+    ]
+
+
 def get_available_table_ids(reservation_time):
-    free = []
-    for table in list_active_tables():
-        t_id = table["id"]
-        if has_table_block_conflict([t_id], reservation_time):
-            continue
-        if has_reservation_conflict([t_id], reservation_time):
-            continue
-        free.append(table)
-    return free
+    start, end = reservation_window(reservation_time)
+    return free_tables_at(reservation_time, list_active_tables(), load_table_occupancy(start, end))
 
 
-def pick_best_table_combo(guests, reservation_time):
-    free_tables = get_available_table_ids(reservation_time)
+def pick_best_table_combo(guests, reservation_time, free_tables=None):
+    if free_tables is None:
+        free_tables = get_available_table_ids(reservation_time)
     if not free_tables:
         return None
 
@@ -1414,6 +1450,9 @@ def get_slots_for_day(date_value, guests):
 
     open_time_value = parse_time_value(schedule["openTime"])
     close_time_value = parse_time_value(schedule["closeTime"])
+    tables = list_active_tables()
+    day_start = datetime.combine(date_obj, time(0, 0))
+    occupancy = load_table_occupancy(day_start, reservation_end(day_start + timedelta(hours=23, minutes=59)))
     slots = []
     hour = open_time_value.hour
     minute = open_time_value.minute
@@ -1433,7 +1472,7 @@ def get_slots_for_day(date_value, guests):
                 AVAILABILITY_STEP_MINUTES,
             )
         slot_time = datetime.combine(date_obj, time(hour, minute))
-        combo = pick_best_table_combo(guests, slot_time)
+        combo = pick_best_table_combo(guests, slot_time, free_tables_at(slot_time, tables, occupancy))
         slots.append(
             {
                 "reservation_time": slot_time.isoformat(),

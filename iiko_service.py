@@ -277,6 +277,23 @@ def get_reserve_status(restaurant_id: int, iiko_reserve_id: str) -> dict | None:
     return reserves[0] if reserves else None
 
 
+def get_reserves_status(restaurant_id: int, iiko_reserve_ids: list[str], batch_size: int = 50) -> dict[str, dict]:
+    """Full reserve details for many IDs, as {reserve_id: status_by_id entry}."""
+    config = _get_restaurant_iiko_config(restaurant_id)
+    if not config or not iiko_reserve_ids:
+        return {}
+    out = {}
+    for i in range(0, len(iiko_reserve_ids), batch_size):
+        data = _authed_post(config["iiko_api_login"], "/api/1/reserve/status_by_id", {
+            "organizationId": config["iiko_organization_id"],
+            "reserveIds": iiko_reserve_ids[i:i + batch_size],
+        })
+        for entry in data.get("reserves", []):
+            if entry.get("id"):
+                out[entry["id"]] = entry
+    return out
+
+
 def create_reserve(
     restaurant_id: int,
     *,

@@ -37,6 +37,10 @@ services:
       DB_NAME: qrs_booking
       DB_USER: qrs_user
       DB_PASSWORD: qrs_pass
+      DATABASE_URL: ${DATABASE_URL:-}
+      DB_SSLMODE: ${DB_SSLMODE:-}
+      DB_SCHEMA: ${DB_SCHEMA:-}
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
       APP_PORT: 8000
       MENU_UPLOAD_DIR: /data/menus
       OPEN_HOUR: 11
@@ -76,6 +80,10 @@ services:
       DB_NAME: qrs_booking
       DB_USER: qrs_user
       DB_PASSWORD: qrs_pass
+      DATABASE_URL: ${DATABASE_URL:-}
+      DB_SSLMODE: ${DB_SSLMODE:-}
+      DB_SCHEMA: ${DB_SCHEMA:-}
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
       APP_PORT: 8001
       MENU_UPLOAD_DIR: /data/menus
       SUPERADMIN_LOGIN: ${SUPERADMIN_LOGIN:-superadmin}
@@ -116,6 +124,10 @@ services:
       DB_NAME: qrs_booking
       DB_USER: qrs_user
       DB_PASSWORD: qrs_pass
+      DATABASE_URL: ${DATABASE_URL:-}
+      DB_SSLMODE: ${DB_SSLMODE:-}
+      DB_SCHEMA: ${DB_SCHEMA:-}
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
       SLOT_MINUTES: 120
       RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
       SMS_CENTRE_LOGIN: ${SMS_CENTRE_LOGIN:-}
@@ -151,6 +163,10 @@ services:
       DB_NAME: qrs_booking
       DB_USER: qrs_user
       DB_PASSWORD: qrs_pass
+      DATABASE_URL: ${DATABASE_URL:-}
+      DB_SSLMODE: ${DB_SSLMODE:-}
+      DB_SCHEMA: ${DB_SCHEMA:-}
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
       SLOT_MINUTES: 120
       RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
       IIKO_APP_ID: ${IIKO_APP_ID:-}

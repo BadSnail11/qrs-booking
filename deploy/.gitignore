@@ -1,3 +1,4 @@
 .env.prod
 *.pem
 *.key
+backups/
